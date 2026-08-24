@@ -22,4 +22,22 @@ build-backend = "uv_build"
 dev = [
     "ipykernel>=7.3.0",
     "nbstripout>=0.9.1",
+    "ruff>=0.16.4",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # Pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
