@@ -18,6 +18,9 @@ install: ## Install dependencies and the project in the uv venv
 data: ## Download and prepare the dataset
 	$(PYTHON) $(SRC_DIR)/data.py
 
+preproc: ## Preprocess input text
+	$(PYTHON) $(SRC_DIR)/preproc.py
+
 train: ## Train the model
 	$(PYTHON) $(SRC_DIR)/train.py
 
