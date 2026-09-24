@@ -11,11 +11,12 @@ SPEECH_MD = get_metadata_path(get_project_root())
 
 # Training loop
 def train(batch_size=32):
-    # Get entry from metadata
+    # Source training data
     df = pd.read_csv(SPEECH_MD, sep="|", header=None)
-    for row in df.itertuples():
-        print(row[2])
-        break
+    # Batch training data
+    # Push through model
+    # Checkpoint
+    return
 
 
 def main():
