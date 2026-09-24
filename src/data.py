@@ -36,8 +36,24 @@ def download_extract_dataset(output_dir: Path):
         print("Dataset already extracted, skipping extraction.")
 
 
+def get_project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def get_dataset_dir(project_root: Path) -> Path:
+    return project_root / "data" / "raw" / "LJSpeech-1.1"
+
+
+def get_metadata_path(project_root: Path) -> Path:
+    return get_dataset_dir(project_root) / "metadata.csv"
+
+
+def get_wav_path(project_root: Path, label: str) -> Path:
+    return get_dataset_dir(project_root) / "wavs" / f"{label}.wav"
+
+
 def main():
-    project_root = Path(__file__).resolve().parent.parent
+    project_root = get_project_root()
     raw_dir, _ = setup_dir_structure(project_root)
     download_extract_dataset(raw_dir)
 

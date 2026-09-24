@@ -1,10 +1,10 @@
 """Preprocessing for input text and training data."""
 
-from pathlib import Path
-
 import keras
 import librosa
 import numpy as np
+
+from data import get_project_root, get_wav_path
 
 MAX_SEQ_LENGTH = 256
 MAX_WAV_LEN_S = 10
@@ -67,7 +67,7 @@ def linear_scale_spectrogram(wav_file):
 
 # Generate character embeddings and acoustic features from a given training data label
 def preproc_entry(label: str, text: str):
-    wav_file = Path("Bar")  # TODO
+    wav_file = get_wav_path(get_project_root(), label)
     return (
         text_embeddings(text),
         mel_scale_spectrogram(wav_file),

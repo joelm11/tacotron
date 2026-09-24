@@ -1,11 +1,10 @@
 """Train the model."""
 
-from pathlib import Path
-
 import pandas as pd
 
-# TODO: Un-hardcode this.
-SPEECH_MD = Path("/home/joelm/Desktop/tts/taco/data/raw") / "LJSpeech-1.1" / "metadata.csv"
+from data import get_metadata_path, get_project_root
+
+SPEECH_MD = get_metadata_path(get_project_root())
 
 # Get input sequence and acoustic representations
 
