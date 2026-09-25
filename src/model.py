@@ -110,17 +110,19 @@ class Cbhg(layers.Layer):
 class DecoderRnn(layers.Layer):
     """2-layer residual GRU"""
 
-    def __init__(self, cells=256):
+    def __init__(self, cells=256, num_mels=80, r=3):
         super().__init__()
-        self.cells = cells
-
-        self.g1 = layers.GRU(self.cells, return_sequences=True)
-        self.g2 = layers.GRU(self.cells, return_sequences=True)
+        self.g1 = layers.GRU(cells, return_sequences=True)
+        self.g2 = layers.GRU(cells, return_sequences=True)
+        self.frame_proj = layers.Dense(num_mels * r, activation=None)
+        self.reshape = layers.Reshape((r, num_mels))
 
     def call(self, inputs):
         x1 = self.g1(inputs) + inputs
         x2 = self.g2(x1) + x1
-        return x2
+        outputs = self.frame_proj(x2)
+        outputs = self.reshape(outputs)
+        return outputs
 
 
 class AttentionRnn(layers.Layer):
@@ -143,7 +145,8 @@ class Attention(layers.Layer):
         self.attn = layers.AdditiveAttention()
 
     def call(self, query, keys):
-        pass
+        x = self.attn([query, keys])
+        return x
 
 
 class Encoder(layers.Layer):
