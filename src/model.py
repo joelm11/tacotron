@@ -170,9 +170,11 @@ class Decoder(layers.Layer):
         x, s_d = self.dec_rnn(keras.ops.concatenate([c, s_a]), dec_rnn_state)
         return x, (s_a, s_d)
 
-    def get_initial_states(self):
-        # self.attn_rnn.
-        return
+    def get_initial_states(self, batch_size):
+        attn = keras.ops.zeros(batch_size, self.attn_rnn.cells)
+        d1 = keras.ops.zeros((batch_size, self.dec_rnn.g1.units))
+        d2 = keras.ops.zeros((batch_size, self.dec_rnn.g2.units))
+        return (attn, (d1, d2))
 
 
 class PostNet(layers.Layer):
@@ -196,11 +198,12 @@ class Tacotron(keras.Model):
 
         encoder_seq = self.encoder(text_seq)
 
+        batch_size = inputs.shape[0]
         max_len = target_mels.shape[1] if training else 500
 
         # Initialize states
-        next_mels = keras.ops.zeros((inputs.shape[0], target_mels.shape[-1]))
-        states = self.decoder.get_initial_states()  # TODO
+        next_mels = keras.ops.zeros((batch_size, target_mels.shape[-1]))
+        states = self.decoder.get_initial_states(batch_size)
 
         output_mels = []
         for t in range(max_len):
@@ -212,10 +215,19 @@ class Tacotron(keras.Model):
                 next_mels = output_mel
 
         # TODO Mels loss: outside of or inside of loop?
+        self.add_loss(0)
 
         output_spectra = [self.post_net(mel) for mel in output_mels]
 
         # TODO Spectral loss
+        self.add_loss(0)
+
+        return output_spectra
+
+    def loss(self, target_mel, pred_mel, target_spectra, pred_spectra):
+        seq2seq = keras.losses.MeanAbsoluteError(target_mel, pred_mel)
+        spectral = keras.losses.MeanAbsoluteError(target_spectra, pred_spectra)
+        return seq2seq + spectral
 
 
 # TODO Losses for seq2seq target (decoder) and for spectra (postnet).
