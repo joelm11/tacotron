@@ -7,17 +7,13 @@ from keras import layers
 
 
 class PreNet(layers.Layer):
-    def __init__(self, units=128):
+    def __init__(self, input_dim=256, units=128):
         super().__init__()
-        self.units = units
-
-    def build(self, input_shape):
-        self.fc1 = layers.Dense(input_shape[-1], activation="relu")
+        self.fc1 = layers.Dense(input_dim, activation="relu")
         self.d1 = layers.Dropout(0.5)
-        self.fc2 = layers.Dense(self.units, activation="relu")
+        self.fc2 = layers.Dense(units, activation="relu")
         self.d2 = layers.Dropout(0.5)
 
-    # To the encoder/decoder prenets we expect input to be of shape (B, T, 256)
     def call(self, inputs, training=None):
         x = self.fc1(inputs)
         x = self.d1(x, training)
@@ -49,10 +45,9 @@ class HighwayNet(layers.Layer):
 class Cbhg(layers.Layer):
     """*Encoder* CBHG. Input to this layer is (B, T, 128). Output from this layer is (B, T, 128)"""
 
-    def __init__(self, k=16, units=128):
+    def __init__(self, k=16, projection_units=(128, 128), units=128):
         super().__init__()
         self.units = units
-        self.k = k
         self.conv_bank = [
             keras.Sequential(
                 [
@@ -67,13 +62,13 @@ class Cbhg(layers.Layer):
                     layers.ReLU(),
                 ]
             )
-            for i in range(1, self.k + 1)
+            for i in range(1, k + 1)
         ]
         self.pool = layers.MaxPool1D(pool_size=2, strides=1, padding="same")
         self.proj1 = keras.Sequential(
             [
                 layers.Conv1D(
-                    self.units,
+                    projection_units[0],
                     3,
                     strides=1,
                     padding="same",
@@ -83,7 +78,7 @@ class Cbhg(layers.Layer):
                 layers.ReLU(),
             ]
         )
-        self.proj2 = layers.Conv1D(self.units, 3, padding="same", use_bias=True)
+        self.proj2 = layers.Conv1D(projection_units[1], 3, padding="same", use_bias=True)
         self.hnet = [HighwayNet(self.units) for _ in range(4)]
         self.gru = layers.Bidirectional(layers.GRU(self.units // 2, return_sequences=True))
 
@@ -108,39 +103,37 @@ class Cbhg(layers.Layer):
 
 
 class DecoderRnn(layers.Layer):
-    """2-layer residual GRU"""
-
+    # 2 layer residual GRU
     def __init__(self, cells=256, num_mels=80, r=3):
         super().__init__()
-        self.g1 = layers.GRU(cells, return_sequences=True)
-        self.g2 = layers.GRU(cells, return_sequences=True)
+        self.g1 = layers.GRU(cells, return_state=True)
+        self.g2 = layers.GRU(cells, return_state=True)
         self.frame_proj = layers.Dense(num_mels * r, activation=None)
         self.reshape = layers.Reshape((r, num_mels))
 
-    def call(self, inputs):
-        x1 = self.g1(inputs) + inputs
-        x2 = self.g2(x1) + x1
+    def call(self, inputs, state):
+        x1, s1 = self.g1(inputs, initial_state=state[0]) + inputs
+        x2, s2 = self.g2(x1, initial_state=state[1]) + x1
         outputs = self.frame_proj(x2)
         outputs = self.reshape(outputs)
-        return outputs
+        return outputs, (s1, s2)
 
 
 class AttentionRnn(layers.Layer):
-    """Attention RNN"""
-
+    # Attention RNN
     def __init__(self, cells=256):
         super().__init__()
         self.cells = cells
-
         self.g1 = layers.GRU(self.cells, return_state=True)
 
-    def call(self, inputs):
-        _, s = self.g1(inputs)
+    def call(self, inputs, state):
+        _, s = self.g1(inputs, initial_state=state)
         return s
 
 
 class Attention(layers.Layer):
-    def __init__(self, cells=256):
+    # Seq2Seq attention mechanism
+    def __init__(self):
         super().__init__()
         self.attn = layers.AdditiveAttention()
 
@@ -150,23 +143,80 @@ class Attention(layers.Layer):
 
 
 class Encoder(layers.Layer):
-    """Takes as input ohe text, encodes to a learned intermediate representation."""
-
     def __init__(self):
-        pass
+        self.prenet = PreNet()
+        self.cbhg = Cbhg(16, (128, 128), 128)
 
-    def call(self, inputs):
-        pass
+    # Inputs: (B, 256, 256)
+    def call(self, inputs, Training=None):
+        x = self.prenet(inputs)
+        encoder_outputs = self.cbhg(x)
+        return encoder_outputs
 
 
 class Decoder(layers.Layer):
-    """Takes as input encoder representation of sequence, other data for calculating loss."""
-
     def __init__(self):
-        pass
+        self.prenet = PreNet()
+        self.attn_rnn = AttentionRnn()
+        self.dec_rnn = DecoderRnn()
+        self.attn = Attention()
 
-    def call(self, inputs):
-        pass
+    def call(self, input_frame, encoder_outputs, states, training=False):
+        attn_rnn_state = states[0]
+        dec_rnn_state = states[1]
+        x = self.prenet(input_frame)
+        q, s_a = self.attn_rnn(x, attn_rnn_state)
+        c = self.attn(q, encoder_outputs)
+        x, s_d = self.dec_rnn(keras.ops.concatenate([c, s_a]), dec_rnn_state)
+        return x, (s_a, s_d)
+
+    def get_initial_states(self):
+        # self.attn_rnn.
+        return
 
 
-# class Tacotron(keras.Model):
+class PostNet(layers.Layer):
+    def __init__(self):
+        self.cbhg = Cbhg(8, (256, 128), 128)
+
+    def call(self, inputs, training=False):
+        # We take the full target sequence from the decoder (B, T, 80)
+        x = self.cbhg(inputs)
+        return x
+
+
+class Tacotron(keras.Model):
+    def __init__(self):
+        self.encoder = Encoder()
+        self.decoder = Decoder()
+        self.post_net = PostNet()
+
+    def call(self, inputs, training=False):
+        text_seq, target_mels, target_spectra = inputs
+
+        encoder_seq = self.encoder(text_seq)
+
+        max_len = target_mels.shape[1] if training else 500
+
+        # Initialize states
+        next_mels = keras.ops.zeros((inputs.shape[0], target_mels.shape[-1]))
+        states = self.decoder.get_initial_states()  # TODO
+
+        output_mels = []
+        for t in range(max_len):
+            output_mel, states = self.decoder(next_mels, encoder_seq, states, training=training)
+            output_mels.append(output_mel[-1])  # Keep only the last frame
+            if training:
+                next_mels = target_mels[:, t, :]
+            else:
+                next_mels = output_mel
+
+        # TODO Mels loss: outside of or inside of loop?
+
+        output_spectra = [self.post_net(mel) for mel in output_mels]
+
+        # TODO Spectral loss
+
+
+# TODO Losses for seq2seq target (decoder) and for spectra (postnet).
+# TODO Initial state and state updates for decoder network.
