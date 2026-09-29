@@ -182,31 +182,35 @@ class Decoder(layers.Layer):
 
 
 class PostNet(layers.Layer):
-    def __init__(self):
+    def __init__(self, num_freq=1025):
         super().__init__()
+        self.input_proj = layers.Dense(128, use_bias=True)
         self.cbhg = Cbhg(8, (256, 128), 128)
+        self.output_proj = layers.Dense(num_freq, use_bias=True)
 
     def call(self, inputs, training=False):
-        # We take the full target sequence from the decoder (B, T, 80)
-        x = self.cbhg(inputs, training)
+        # inputs: (B, T, 80)
+        x = self.input_proj(inputs)
+        x = self.cbhg(x, training)
+        x = self.output_proj(x)
         return x
 
 
 class Tacotron(keras.Model):
-    def __init__(self):
+    def __init__(self, num_freq=1025):
         super().__init__()
         self.encoder = Encoder()
         self.decoder = Decoder()
-        self.post_net = PostNet()
+        self.post_net = PostNet(num_freq)
 
     def call(self, inputs, training=False):
         text_seq, target_mels, target_spectra = inputs
 
-        encoder_seq = self.encoder(text_seq)
+        encoder_seq = self.encoder(text_seq, training)
 
         batch_size = text_seq.shape[0]
         r = self.decoder.dec_rnn.r
-        max_len = target_mels.shape[1] // r if training else 500 // r
+        max_len = 256  # Guessing
 
         # Initialize states
         next_mels = keras.ops.zeros((batch_size, target_mels.shape[-1]))
@@ -231,7 +235,7 @@ class Tacotron(keras.Model):
 
         self.add_loss(self.loss(target_mels, output_mels, target_spectra, output_spectra))
 
-        return output_spectra
+        return output_mels, output_spectra
 
     def loss(self, target_mel, pred_mel, target_spectra, pred_spectra):
         mae = keras.losses.MeanAbsoluteError()
@@ -242,4 +246,3 @@ class Tacotron(keras.Model):
 
 # TODO Make sure loss is correct
 # TODO Masking?
-# TODO Use training arg for batch norm and dropout?
