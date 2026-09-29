@@ -4,8 +4,9 @@ We will serialize the computed features as .npz.
 """
 
 import csv
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+from functools import partial
+from multiprocessing import Pool
 from pathlib import Path
 
 import librosa
@@ -47,7 +48,7 @@ def mel_scale_spectrogram(y, sr):
         n_mels=N_MELS,
         window="hann",
     )
-    return librosa.power_to_db(mels_db, ref=np.max).astype(np.float32)
+    return librosa.power_to_db(mels_db, ref=np.max).T.astype(np.float32)
 
 
 def linear_scale_spectrogram(y, sr):
@@ -61,7 +62,8 @@ def linear_scale_spectrogram(y, sr):
         window="hann",
         center=False,
     )
-    return librosa.power_to_db(stft, ref=np.max).astype(np.float32)
+    mag = np.abs(stft)
+    return librosa.amplitude_to_db(mag, ref=np.max).T.astype(np.float32)
 
 
 def preproc_entry(entry: MetadataEntry, out_dir):
@@ -102,20 +104,24 @@ def build_preproc_pipeline():
             label, text = row[0], row[2] if len(row) > 2 else row[1]
             entries.append(MetadataEntry(label, text, get_wav_path(p_root, label)))
 
-    # Process list of entries
+    # Construct features from metadata entries
     results = []
-    with ProcessPoolExecutor() as pool:
-        for result in tqdm(pool.map(lambda a: preproc_entry(*a), entries), total=len(entries)):
-            results.append(result)
-
-    # TODO Can examine results and write some output if we wanted here
+    with Pool() as pool:
+        results = list(
+            tqdm(
+                pool.imap_unordered(partial(preproc_entry, out_dir=f_out_dir), entries),
+                total=len(entries),
+            )
+        )
 
     return f_out_dir
 
 
 def build_dataset():
     """Builds the preprocessed training dataset from serialized features."""
-    pass
+    # Each zip file has text, mels, spectra
+    # Open each file
+    #
 
 
 def main():
