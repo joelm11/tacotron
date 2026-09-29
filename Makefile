@@ -1,10 +1,17 @@
-.PHONY: help install data train serve format clean
+.PHONY: help install data train train-cpu train-gpu serve format clean
 
 # Use uv for all Python operations
 UV := uv
 PYTHON := $(UV) run python
 
 SRC_DIR := src
+
+# Ensure Keras uses the TensorFlow backend (required for GPU support)
+export KERAS_BACKEND := tensorflow
+
+# Ensure TensorFlow can find the CUDA/cuDNN libraries installed via pip
+NVIDIA_LIB_DIRS := $(shell test -d .venv && find $(PWD)/.venv/lib/python*/site-packages/nvidia -type d -name lib 2>/dev/null | tr '\n' ':' || true)
+export LD_LIBRARY_PATH := $(NVIDIA_LIB_DIRS)$(LD_LIBRARY_PATH)
 
 help: ## Show this help
 	@echo "Usage: make <target>"
@@ -21,7 +28,7 @@ data: ## Download and prepare the dataset
 preproc: ## Preprocess input text
 	$(PYTHON) $(SRC_DIR)/preproc.py
 
-train: ## Train the model
+train: ## Train the model (uses GPU if available, otherwise CPU)
 	$(PYTHON) $(SRC_DIR)/train.py
 
 serve: ## Serve the trained model
