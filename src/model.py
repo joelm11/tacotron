@@ -48,7 +48,7 @@ class Cbhg(layers.Layer):
         self.conv_bank = [
             keras.Sequential(
                 [
-                    layers.Conv1DTranspose(
+                    layers.Conv1D(
                         self.units,
                         i,
                         strides=1,
@@ -126,8 +126,8 @@ class AttentionRnn(layers.Layer):
         self.g1 = layers.GRU(self.cells, return_state=True)
 
     def call(self, inputs, state):
-        _, s = self.g1(inputs, initial_state=state)
-        return s
+        x, s = self.g1(inputs, initial_state=state)
+        return x, s
 
 
 class Attention(layers.Layer):
@@ -149,7 +149,7 @@ class Encoder(layers.Layer):
 
     # Inputs: (B, 256, 256)
     def call(self, inputs, training=None):
-        x = self.prenet(inputs)
+        x = self.prenet(inputs, training)
         encoder_outputs = self.cbhg(x, training)
         return encoder_outputs
 
@@ -165,14 +165,14 @@ class Decoder(layers.Layer):
     def call(self, input_frame, encoder_outputs, states, training=False):
         attn_rnn_state = states[0]
         dec_rnn_state = states[1]
-        x = self.prenet(input_frame)
+        x = self.prenet(input_frame, training)
         q, s_a = self.attn_rnn(x, attn_rnn_state)
         c = self.attn(q, encoder_outputs)
         x, s_d = self.dec_rnn(keras.ops.concatenate([c, s_a]), dec_rnn_state)
         return x, (s_a, s_d)
 
     def get_initial_states(self, batch_size):
-        attn = keras.ops.zeros(batch_size, self.attn_rnn.cells)
+        attn = keras.ops.zeros((batch_size, self.attn_rnn.cells))
         d1 = keras.ops.zeros((batch_size, self.dec_rnn.g1.units))
         d2 = keras.ops.zeros((batch_size, self.dec_rnn.g2.units))
         return (attn, (d1, d2))
@@ -185,7 +185,7 @@ class PostNet(layers.Layer):
 
     def call(self, inputs, training=False):
         # We take the full target sequence from the decoder (B, T, 80)
-        x = self.cbhg(inputs)
+        x = self.cbhg(inputs, training)
         return x
 
 
@@ -201,7 +201,7 @@ class Tacotron(keras.Model):
 
         encoder_seq = self.encoder(text_seq)
 
-        batch_size = inputs.shape[0]
+        batch_size = text_seq.shape[0]
         max_len = target_mels.shape[1] if training else 500
 
         # Initialize states
@@ -211,7 +211,7 @@ class Tacotron(keras.Model):
         output_mels = []
         for t in range(max_len):
             output_mel, states = self.decoder(next_mels, encoder_seq, states, training=training)
-            output_mels.append(output_mel[-1])  # Keep only the last frame
+            output_mels.append(output_mel[:, -1, :])  # Keep only the last frame
             if training:
                 next_mels = target_mels[:, t, :]
             else:
@@ -225,9 +225,11 @@ class Tacotron(keras.Model):
 
     def loss(self, target_mel, pred_mel, target_spectra, pred_spectra):
         mae = keras.losses.MeanAbsoluteError()
-        seq2seq = mae(target_mel, pred_mel)
-        spectral = mae(target_spectra, pred_spectra)
-        return seq2seq + spectral  # type: ignore
+        seq2seq = mae(keras.ops.stack(target_mel, axis=1), keras.ops.stack(pred_mel, axis=1))
+        spectral = mae(
+            keras.ops.stack(target_spectra, axis=1), keras.ops.stack(pred_spectra, axis=1)
+        )
+        return seq2seq + spectral
 
 
 # TODO Make sure loss is correct
