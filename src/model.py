@@ -144,6 +144,7 @@ class Attention(layers.Layer):
 
 class Encoder(layers.Layer):
     def __init__(self):
+        super().__init__()
         self.prenet = PreNet()
         self.cbhg = Cbhg(16, (128, 128), 128)
 
@@ -156,6 +157,7 @@ class Encoder(layers.Layer):
 
 class Decoder(layers.Layer):
     def __init__(self):
+        super().__init__()
         self.prenet = PreNet()
         self.attn_rnn = AttentionRnn()
         self.dec_rnn = DecoderRnn()
@@ -179,6 +181,7 @@ class Decoder(layers.Layer):
 
 class PostNet(layers.Layer):
     def __init__(self):
+        super().__init__()
         self.cbhg = Cbhg(8, (256, 128), 128)
 
     def call(self, inputs, training=False):
@@ -189,6 +192,7 @@ class PostNet(layers.Layer):
 
 class Tacotron(keras.Model):
     def __init__(self):
+        super().__init__()
         self.encoder = Encoder()
         self.decoder = Decoder()
         self.post_net = PostNet()
@@ -214,21 +218,12 @@ class Tacotron(keras.Model):
             else:
                 next_mels = output_mel
 
-        # TODO Mels loss: outside of or inside of loop?
-        self.add_loss(0)
-
         output_spectra = [self.post_net(mel) for mel in output_mels]
-
-        # TODO Spectral loss
-        self.add_loss(0)
 
         return output_spectra
 
     def loss(self, target_mel, pred_mel, target_spectra, pred_spectra):
-        seq2seq = keras.losses.MeanAbsoluteError(target_mel, pred_mel)
-        spectral = keras.losses.MeanAbsoluteError(target_spectra, pred_spectra)
-        return seq2seq + spectral
-
-
-# TODO Losses for seq2seq target (decoder) and for spectra (postnet).
-# TODO Initial state and state updates for decoder network.
+        mae = keras.losses.MeanAbsoluteError()
+        seq2seq = mae(target_mel, pred_mel)
+        spectral = mae(target_spectra, pred_spectra)
+        return seq2seq + spectral  # type: ignore
