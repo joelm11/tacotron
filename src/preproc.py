@@ -88,14 +88,14 @@ def preproc_entry(entry: MetadataEntry, out_dir):
         mels = mel_scale_spectrogram(y, sr)
         mels = np.pad(
             mels,
-            pad_width=max(0, N_FRAMES - mels.shape[0]),
+            pad_width=((0, max(0, N_FRAMES - mels.shape[0])), (0, 0)),
             mode="constant",
             constant_values=mels.min(),
         )
         spectra = linear_scale_spectrogram(y, sr)
         spectra = np.pad(
             spectra,
-            pad_width=max(0, N_FRAMES - spectra.shape[0]),
+            pad_width=((0, max(0, N_FRAMES - spectra.shape[0])), (0, 0)),
             mode="constant",
             constant_values=spectra.min(),
         )
@@ -127,10 +127,13 @@ def build_preproc_pipeline():
             entries.append(MetadataEntry(label, text, get_wav_path(p_root, label)))
 
     # Construct features from metadata entries
+    results = []
     with Pool() as pool:
-        tqdm(
-            pool.imap_unordered(partial(preproc_entry, out_dir=f_out_dir), entries),
-            total=len(entries),
+        results = list(
+            tqdm(
+                pool.imap_unordered(partial(preproc_entry, out_dir=f_out_dir), entries),
+                total=len(entries),
+            )
         )
     return f_out_dir
 
