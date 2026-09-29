@@ -112,8 +112,10 @@ class DecoderRnn(layers.Layer):
         self.reshape = layers.Reshape((r, num_mels))
 
     def call(self, inputs, state):
-        x1, s1 = self.g1(inputs, initial_state=state[0]) + inputs
-        x2, s2 = self.g2(x1, initial_state=state[1]) + x1
+        x1, s1 = self.g1(inputs, initial_state=state[0])
+        x1 = x1 + inputs
+        x2, s2 = self.g2(x1, initial_state=state[1])
+        x2 = x2 + x1
         outputs = self.frame_proj(x2)
         outputs = self.reshape(outputs)
         return outputs, (s1, s2)
@@ -220,6 +222,8 @@ class Tacotron(keras.Model):
 
         output_spectra = [self.post_net(mel) for mel in output_mels]
 
+        self.add_loss(self.loss(target_mels, output_mels, target_spectra, output_spectra))
+
         return output_spectra
 
     def loss(self, target_mel, pred_mel, target_spectra, pred_spectra):
@@ -227,3 +231,8 @@ class Tacotron(keras.Model):
         seq2seq = mae(target_mel, pred_mel)
         spectral = mae(target_spectra, pred_spectra)
         return seq2seq + spectral  # type: ignore
+
+
+# TODO Make sure loss is correct
+# TODO Masking?
+# TODO Use training arg for batch norm and dropout?
