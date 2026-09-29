@@ -17,8 +17,9 @@ from data import get_metadata_path, get_project_root, get_wav_path, setup_dir_st
 
 MAX_SEQ_LENGTH = 256
 MAX_WAV_LEN_S = 10
-TARGET_SR = 22050
+TARGET_SR = 24e3
 N_MELS = 80
+N_FRAMES = 800
 
 
 @dataclass
@@ -75,8 +76,22 @@ def preproc_entry(entry: MetadataEntry, out_dir):
         y, sr = librosa.load(entry.wav_path, sr=TARGET_SR)
 
         ohe_text = text_embeddings(entry.text)
+
+        # Calculate and pad acoustic features
         mels = mel_scale_spectrogram(y, sr)
+        np.pad(
+            mels,
+            pad_width=max(0, N_FRAMES - mels.shape[0]),
+            mode="constant",
+            constant_values=mels.min(),
+        )
         spectra = linear_scale_spectrogram(y, sr)
+        np.pad(
+            spectra,
+            pad_width=max(0, N_FRAMES - spectra.shape[0]),
+            mode="constant",
+            constant_values=spectra.min(),
+        )
 
         np.savez_compressed(
             out_path,
@@ -117,7 +132,7 @@ def build_preproc_pipeline():
     return f_out_dir
 
 
-def build_dataset():
+def build_dataset(batch_size=32):
     """Builds the preprocessed training dataset from serialized features."""
     # Each zip file has text, mels, spectra
     # Open each file
