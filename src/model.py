@@ -103,13 +103,16 @@ class DecoderRnn(layers.Layer):
     # 2 layer residual GRU
     def __init__(self, cells=256, num_mels=80, r=3):
         super().__init__()
+        self.r = r
+        self.input_proj = layers.Dense(cells, activation=None)
         self.g1 = layers.GRU(cells, return_state=True)
         self.g2 = layers.GRU(cells, return_state=True)
         self.frame_proj = layers.Dense(num_mels * r, activation=None)
         self.reshape = layers.Reshape((r, num_mels))
 
     def call(self, inputs, state):
-        x1, s1 = self.g1(inputs, initial_state=state[0])
+        x = self.input_proj(inputs)
+        x1, s1 = self.g1(x, initial_state=state[0])
         x1 = x1 + inputs
         x2, s2 = self.g2(x1, initial_state=state[1])
         x2 = x2 + x1
@@ -202,7 +205,8 @@ class Tacotron(keras.Model):
         encoder_seq = self.encoder(text_seq)
 
         batch_size = text_seq.shape[0]
-        max_len = target_mels.shape[1] if training else 500
+        r = self.decoder.dec_rnn.r
+        max_len = target_mels.shape[1] // r if training else 500 // r
 
         # Initialize states
         next_mels = keras.ops.zeros((batch_size, target_mels.shape[-1]))
@@ -211,13 +215,19 @@ class Tacotron(keras.Model):
         output_mels = []
         for t in range(max_len):
             output_mel, states = self.decoder(next_mels, encoder_seq, states, training=training)
-            output_mels.append(output_mel[:, -1, :])  # Keep only the last frame
+            output_mels.append(output_mel)  # keep the full (B, r, 80) chunk
             if training:
-                next_mels = target_mels[:, t, :]
+                # Last frame of the current target chunk
+                next_mels = target_mels[:, (t + 1) * r - 1, :]
             else:
-                next_mels = output_mel
+                # Last frame of the predicted chunk
+                next_mels = output_mel[:, -1, :]
 
-        output_spectra = [self.post_net(mel) for mel in output_mels]
+        # Stack into a full mel spectrogram (B, T, 80)
+        output_mels = keras.ops.concatenate(output_mels, axis=1)
+
+        # Apply PostNet to the full sequence
+        output_spectra = self.post_net(output_mels, training=training)
 
         self.add_loss(self.loss(target_mels, output_mels, target_spectra, output_spectra))
 
@@ -225,11 +235,9 @@ class Tacotron(keras.Model):
 
     def loss(self, target_mel, pred_mel, target_spectra, pred_spectra):
         mae = keras.losses.MeanAbsoluteError()
-        seq2seq = mae(keras.ops.stack(target_mel, axis=1), keras.ops.stack(pred_mel, axis=1))
-        spectral = mae(
-            keras.ops.stack(target_spectra, axis=1), keras.ops.stack(pred_spectra, axis=1)
-        )
-        return seq2seq + spectral
+        seq2seq = mae(target_mel, pred_mel)
+        spectral = mae(target_spectra, pred_spectra)
+        return seq2seq + spectral  # type: ignore
 
 
 # TODO Make sure loss is correct
