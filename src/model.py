@@ -18,32 +18,29 @@ class PreNet(layers.Layer):
         x = self.fc1(inputs)
         x = self.d1(x, training)
         x = self.fc2(x)
-        x = self.d2(training)
+        x = self.d2(x, training)
         return x
 
 
 class HighwayNet(layers.Layer):
     def __init__(self, units=128):
         super().__init__()
-        self.units = units
-
-    def build(self, input_shape):
-        self.h = layers.Dense(self.units, activation="relu")
+        self.h = layers.Dense(units, activation="relu")
         init_bias = keras.initializers.Constant(value=-2.0)
         self.t = layers.Dense(
-            self.units,
+            units,
             activation="sigmoid",
             bias_initializer=init_bias,  # type: ignore
         )
 
-    def call(self, inputs, training=None):
+    def call(self, inputs):
         h = self.h(inputs)
         t = self.t(inputs)
         return h * t + inputs * (1.0 - t)
 
 
 class Cbhg(layers.Layer):
-    """*Encoder* CBHG. Input to this layer is (B, T, 128). Output from this layer is (B, T, 128)"""
+    """CBHG. Input to this layer is (B, T, 128). Output from this layer is (B, T, 128)"""
 
     def __init__(self, k=16, projection_units=(128, 128), units=128):
         super().__init__()
@@ -85,12 +82,12 @@ class Cbhg(layers.Layer):
     def call(self, inputs, training=None):
         # After conv bank (B, T, K, 128)
         # Concatenate along K so we have (B, T, 2048)
-        x = [conv(inputs) for conv in self.conv_bank]
+        x = [conv(inputs, training) for conv in self.conv_bank]
         x = layers.concatenate(x)
 
         x = self.pool(x)
 
-        x = self.proj1(x)
+        x = self.proj1(x, training)
         x = self.proj2(x)
 
         x = x + inputs
@@ -151,9 +148,9 @@ class Encoder(layers.Layer):
         self.cbhg = Cbhg(16, (128, 128), 128)
 
     # Inputs: (B, 256, 256)
-    def call(self, inputs, Training=None):
+    def call(self, inputs, training=None):
         x = self.prenet(inputs)
-        encoder_outputs = self.cbhg(x)
+        encoder_outputs = self.cbhg(x, training)
         return encoder_outputs
 
 

@@ -16,7 +16,7 @@ SPEECH_MD = get_metadata_path(get_project_root())
 
 
 # Training loop
-def train(batch_size=32):
+def train(model, batch_size=32):
     # Source training data
     train_data = build_dataset(batch_size)
 
@@ -36,7 +36,7 @@ def main():
     model.compile(optimizer)
     # Compile?
     # Fit?
-    train()
+    train(model)
 
 
 if __name__ == "__main__":
