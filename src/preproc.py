@@ -11,9 +11,16 @@ from pathlib import Path
 
 import librosa
 import numpy as np
+import tensorflow as tf
 from tqdm import tqdm
 
-from data import get_metadata_path, get_project_root, get_wav_path, setup_dir_structure
+from data import (
+    get_feat_dir,
+    get_metadata_path,
+    get_project_root,
+    get_wav_path,
+    setup_dir_structure,
+)
 
 MAX_SEQ_LENGTH = 256
 MAX_WAV_LEN_S = 10
@@ -79,14 +86,14 @@ def preproc_entry(entry: MetadataEntry, out_dir):
 
         # Calculate and pad acoustic features
         mels = mel_scale_spectrogram(y, sr)
-        np.pad(
+        mels = np.pad(
             mels,
             pad_width=max(0, N_FRAMES - mels.shape[0]),
             mode="constant",
             constant_values=mels.min(),
         )
         spectra = linear_scale_spectrogram(y, sr)
-        np.pad(
+        spectra = np.pad(
             spectra,
             pad_width=max(0, N_FRAMES - spectra.shape[0]),
             mode="constant",
@@ -120,23 +127,29 @@ def build_preproc_pipeline():
             entries.append(MetadataEntry(label, text, get_wav_path(p_root, label)))
 
     # Construct features from metadata entries
-    results = []
     with Pool() as pool:
-        results = list(
-            tqdm(
-                pool.imap_unordered(partial(preproc_entry, out_dir=f_out_dir), entries),
-                total=len(entries),
-            )
+        tqdm(
+            pool.imap_unordered(partial(preproc_entry, out_dir=f_out_dir), entries),
+            total=len(entries),
         )
-
     return f_out_dir
 
 
 def build_dataset(batch_size=32):
     """Builds the preprocessed training dataset from serialized features."""
-    # Each zip file has text, mels, spectra
-    # Open each file
-    #
+    feat_dir = get_feat_dir(get_project_root())
+
+    def load(p):
+        d = np.load(p.decode())
+        return d["text"], d["mels"], d["spectra"]
+
+    ds = tf.data.Dataset.list_files(str(feat_dir / "*.npz"), shuffle=True)
+    ds = ds.map(
+        lambda p: tf.numpy_function(load, [p], [tf.float32, tf.float32, tf.float32]),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+    ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    return ds
 
 
 def main():

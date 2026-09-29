@@ -2,11 +2,12 @@
 
 import os
 
+from preproc import build_dataset
+
 # Keep TensorFlow as the Keras backend (must be set before importing keras)
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
 
 import keras
-import pandas as pd
 
 from data import get_metadata_path, get_project_root
 from model import Tacotron
@@ -17,10 +18,15 @@ SPEECH_MD = get_metadata_path(get_project_root())
 # Training loop
 def train(batch_size=32):
     # Source training data
-    df = pd.read_csv(SPEECH_MD, sep="|", header=None)
-    # Batch training data
-    # Push through model
-    # Checkpoint
+    train_data = build_dataset(batch_size)
+
+    # Print the dataset's static shape signature
+    print("Dataset element_spec:", train_data.element_spec)
+
+    # Print the actual shapes of one concrete batch
+    for text, mels, spectra in train_data.take(1):
+        print("Batch shapes -- text:", text.shape, "mels:", mels.shape, "spectra:", spectra.shape)
+
     return
 
 
