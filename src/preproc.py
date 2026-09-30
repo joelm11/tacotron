@@ -138,8 +138,19 @@ def build_preproc_pipeline():
     return f_out_dir
 
 
+def format_batch(text, mels, spectra):
+    # Set shapes that tf.numpy_function stripped
+    text.set_shape([None, 256, 256])
+    mels.set_shape([None, 800, 80])
+    spectra.set_shape([None, 800, 1025])
+
+    return (
+        {"text": text, "mels": mels},  # inputs
+        {"mels": mels, "spectra": spectra},  # targets
+    )
+
+
 def build_dataset(batch_size=32):
-    """Builds the preprocessed training dataset from serialized features."""
     feat_dir = get_feat_dir(get_project_root())
 
     def load(p):
@@ -151,6 +162,7 @@ def build_dataset(batch_size=32):
         lambda p: tf.numpy_function(load, [p], [tf.float32, tf.float32, tf.float32]),
         num_parallel_calls=tf.data.AUTOTUNE,
     )
+    ds = ds.map(format_batch, num_parallel_calls=tf.data.AUTOTUNE)
     ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     return ds
 

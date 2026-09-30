@@ -14,11 +14,11 @@ class PreNet(layers.Layer):
         self.fc2 = layers.Dense(units, activation="relu")
         self.d2 = layers.Dropout(0.5)
 
-    def call(self, inputs, training=None):
+    def call(self, inputs, training=False):
         x = self.fc1(inputs)
-        x = self.d1(x, training)
+        x = self.d1(x, training=training)
         x = self.fc2(x)
-        x = self.d2(x, training)
+        x = self.d2(x, training=training)
         return x
 
 
@@ -79,15 +79,15 @@ class Cbhg(layers.Layer):
         self.hnet = [HighwayNet(self.units) for _ in range(4)]
         self.gru = layers.Bidirectional(layers.GRU(self.units // 2, return_sequences=True))
 
-    def call(self, inputs, training=None):
+    def call(self, inputs, training=False):
         # After conv bank (B, T, K, 128)
         # Concatenate along K so we have (B, T, 2048)
-        x = [conv(inputs, training) for conv in self.conv_bank]
+        x = [conv(inputs, training=training) for conv in self.conv_bank]
         x = layers.concatenate(x)
 
         x = self.pool(x)
 
-        x = self.proj1(x, training)
+        x = self.proj1(x, training=training)
         x = self.proj2(x)
 
         x = x + inputs
@@ -152,8 +152,8 @@ class Encoder(layers.Layer):
 
     # Inputs: (B, 256, 256)
     def call(self, inputs, training=None):
-        x = self.prenet(inputs, training)
-        encoder_outputs = self.cbhg(x, training)
+        x = self.prenet(inputs, training=training)
+        encoder_outputs = self.cbhg(x, training=training)
         return encoder_outputs
 
 
@@ -168,7 +168,7 @@ class Decoder(layers.Layer):
     def call(self, input_frame, encoder_outputs, states, training=False):
         attn_rnn_state = states[0]
         dec_rnn_state = states[1]
-        x = self.prenet(input_frame, training)
+        x = self.prenet(input_frame, training=training)
         q, s_a = self.attn_rnn(x, attn_rnn_state)
         c = self.attn(q, encoder_outputs)
         x, s_d = self.dec_rnn(keras.ops.concatenate([c, s_a]), dec_rnn_state)
@@ -191,7 +191,7 @@ class PostNet(layers.Layer):
     def call(self, inputs, training=False):
         # inputs: (B, T, 80)
         x = self.input_proj(inputs)
-        x = self.cbhg(x, training)
+        x = self.cbhg(x, training=training)
         x = self.output_proj(x)
         return x
 
@@ -204,23 +204,31 @@ class Tacotron(keras.Model):
         self.post_net = PostNet(num_freq)
 
     def call(self, inputs, training=False):
-        text_seq, target_mels, target_spectra = inputs
+        # Dict inputs during training. Tensor inputs during inference
+        if training:
+            text_seq = inputs["text"]
+            target_mels = inputs["mels"]
+        else:
+            text_seq = inputs
+            target_mels = None
 
-        encoder_seq = self.encoder(text_seq, training)
+        encoder_seq = self.encoder(text_seq, training=True)
 
         batch_size = text_seq.shape[0]
         r = self.decoder.dec_rnn.r
         max_len = 256  # Guessing
 
         # Initialize states
-        next_mels = keras.ops.zeros((batch_size, target_mels.shape[-1]))
+        next_mels = keras.ops.zeros(
+            (batch_size, target_mels.shape[-1] if target_mels is not None else 80)
+        )
         states = self.decoder.get_initial_states(batch_size)
 
         output_mels = []
         for t in range(max_len):
             output_mel, states = self.decoder(next_mels, encoder_seq, states, training=training)
-            output_mels.append(output_mel)  # keep the full (B, r, 80) chunk
-            if training:
+            output_mels.append(output_mel)  # Keep the full (B, r, 80) chunk
+            if training and target_mels:
                 # Last frame of the current target chunk
                 next_mels = target_mels[:, (t + 1) * r - 1, :]
             else:
@@ -233,9 +241,7 @@ class Tacotron(keras.Model):
         # Apply PostNet to the full sequence
         output_spectra = self.post_net(output_mels, training=training)
 
-        self.add_loss(self.loss(target_mels, output_mels, target_spectra, output_spectra))
-
-        return output_mels, output_spectra
+        return {"mels": output_mels, "spectra": output_spectra}
 
     def loss(self, target_mel, pred_mel, target_spectra, pred_spectra):
         mae = keras.losses.MeanAbsoluteError()
