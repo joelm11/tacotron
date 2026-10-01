@@ -3,6 +3,8 @@ Tacotron 1 layers and model.
 This time around I am trying the vectorized approach instead of the looped approach.
 """
 
+import gpu_setup  # noqa: F401  -- preload NVIDIA libs before TF/Keras
+
 import keras
 from keras import layers
 
@@ -227,6 +229,10 @@ class TextToSpectra(keras.Model):
         mels = keras.ops.reshape(
             mels, (-1, n_frames // r, r * n_mels)
         )  # (B, n_frames // r, r * n_mels)
+        # Drop last frame and prepend 0 frame
+        mels = mels[:, :-1, :]  # type: ignore
+        zero_frame = keras.ops.zeros((keras.ops.shape(mels)[0], 1, r * n_mels))  # type: ignore
+        mels = keras.ops.concatenate([zero_frame, mels], axis=1)
 
         enc_seq = self.encoder(text, training=training)  # (B, T, 128)
 
