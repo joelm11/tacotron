@@ -106,9 +106,8 @@ class AttentionRnn(layers.Layer):
 
 
 class DecoderRnn(layers.Layer):
-    def __init__(self, cells=256, num_mels=80, r=3):
+    def __init__(self, cells=256, num_mels=80, r=5):
         super().__init__()
-        self.r = r
         self.input_proj = layers.Dense(cells, activation="linear")
         self.g1 = layers.GRU(cells, return_sequences=True, return_state=True)
         self.g2 = layers.GRU(cells, return_sequences=True, return_state=True)
@@ -213,25 +212,30 @@ class TextToSpectra(keras.Model):
         self.decoder = Decoder()
         self.post_net = PostNet(num_freq)
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, r=5, training=False):
         # inputs[0] (text): (B, T=256, D=256)
         # inputs[1] (mels): (B, n_frames=800, n_mels=80) teacher forcing and loss
         if training:
-            text, mels = inputs
+            text = inputs["text"]
+            mels = inputs["mels"]
         else:
             # TODO generate() method for inference
             return
 
-        batch_size = inputs.shape[0]
-        t_steps = inputs.shape[1]
+        batch_size = text.shape[0]
+        t_dec = mels.shape[1]
+        n_mels = mels.shape[2]
+
+        # Reshape mels - predict `r` frames at each time step
+        mels = keras.ops.reshape(mels, (batch_size, -1, r * n_mels))
 
         enc_seq = self.encoder(text)  # (B, T, 128)
 
-        # TODO Might need to reshape mels that are input to the decoder (e.g./ reduce with r)
-        pred_mels = self.decoder(mels, enc_seq, training)  # (B, T, r, num_mels)
-        pred_mels = keras.ops.reshape(pred_mels, (batch_size, t_steps, -1))  # (B, T, r * num_mels)
+        pred_mels, _ = self.decoder(mels, enc_seq, training)  # (B, n_frames // r, r * n_mels)
+        # Reshape output to match target
+        pred_mels = keras.ops.reshape(pred_mels, (batch_size, t_dec, -1))  # (B, n_frames, n_mels)
 
-        # TODO Might need to reshape mels that are input to the post net
+        # TODO Unsure what shape is best to feed the mels to the post net
         pred_spectra = self.post_net(pred_mels)
 
         return {"pred_mels": pred_mels, "pred_spectra": pred_spectra}
