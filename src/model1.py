@@ -112,18 +112,16 @@ class DecoderRnn(layers.Layer):
         self.g1 = layers.GRU(cells, return_sequences=True, return_state=True)
         self.g2 = layers.GRU(cells, return_sequences=True, return_state=True)
         self.frame_proj = layers.Dense(num_mels * r, activation=None)
-        self.reshape = layers.Reshape((r, num_mels))
 
     def call(self, inputs):
         # inputs: (B, T, C + Q)
-        # outputs: (B, T, r, num_mels)
+        # outputs: (B, T, r * num_mels)
         x = self.input_proj(inputs)
         x1, s1 = self.g1(x)
         x1 = x1 + x
         x2, s2 = self.g2(x1)
         x2 = x2 + x1
         outputs = self.frame_proj(x2)
-        outputs = self.reshape(outputs)
         return outputs, (s1, s2)
 
 
@@ -166,8 +164,8 @@ class Decoder(layers.Layer):
         self.dec_rnn = DecoderRnn()
 
     def call(self, inputs, encoder_outputs, training=False):
-        # inputs: (B, T, n_mels)
-        # encoder_outputs: (B, T, 128)
+        # inputs: (B, T, D)
+        # encoder_outputs: (B, T, D)
 
         # Project target mels and encoder outputs
         x = self.proj1(inputs)
@@ -177,7 +175,7 @@ class Decoder(layers.Layer):
         x = self.proj2(x)  # (B, T, 256)
         q, s_a = self.attn_rnn(x)  # (B, T, 256)
         c = self.attn(q, encoder_outputs)  # (B, T, 256)
-        x, s_d = self.dec_rnn(keras.ops.concatenate([c, q], axis=-1))  # (B, T, r, num_mels)
+        x, s_d = self.dec_rnn(keras.ops.concatenate([c, q], axis=-1))  # (B, T, r * num_mels)
         return x, (s_a, s_d)
 
     def generate(self, inputs):
@@ -223,17 +221,21 @@ class TextToSpectra(keras.Model):
             return
 
         batch_size = text.shape[0]
-        t_dec = mels.shape[1]
+        n_frames = mels.shape[1]
         n_mels = mels.shape[2]
 
         # Reshape mels - predict `r` frames at each time step
-        mels = keras.ops.reshape(mels, (batch_size, -1, r * n_mels))
+        mels = keras.ops.reshape(
+            mels, (batch_size, -1, r * n_mels)
+        )  # (B, n_frames // r, r * n_mels)
 
         enc_seq = self.encoder(text)  # (B, T, 128)
 
         pred_mels, _ = self.decoder(mels, enc_seq, training)  # (B, n_frames // r, r * n_mels)
         # Reshape output to match target
-        pred_mels = keras.ops.reshape(pred_mels, (batch_size, t_dec, -1))  # (B, n_frames, n_mels)
+        pred_mels = keras.ops.reshape(
+            pred_mels, (batch_size, n_frames, -1)
+        )  # (B, n_frames, n_mels)
 
         # TODO Unsure what shape is best to feed the mels to the post net
         pred_spectra = self.post_net(pred_mels)
