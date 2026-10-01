@@ -2,44 +2,41 @@
 
 import os
 
-from preproc import build_dataset
+from model1 import TextToSpectra
 
 # Keep TensorFlow as the Keras backend (must be set before importing keras)
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
 
 import keras
+import tensorflow as tf
 
 from data import get_metadata_path, get_project_root
-from model import Tacotron
+from preproc import build_dataset
 
 SPEECH_MD = get_metadata_path(get_project_root())
 
 
-# # Training loop
-# def train(model, batch_size=32):
-#     # Source training data
-#     train_data = build_dataset(batch_size)
-
-#     # Print the dataset's static shape signature
-#     print("Dataset element_spec:", train_data.element_spec)
-
-#     # Print the actual shapes of one concrete batch
-#     for text, mels, spectra in train_data.take(1):
-#         print("Batch shapes -- text:", text.shape, "mels:", mels.shape, "spectra:", spectra.shape)
-
-#     return
-
-
 def main():
-    model = Tacotron()
+    # Allow TF to grow GPU memory rather than allocate all at once
+    for gpu in tf.config.list_physical_devices("GPU"):
+        tf.config.experimental.set_memory_growth(gpu, True)
+
+    BATCH_SIZE = 1
+
+    model = TextToSpectra()
     optimizer = keras.optimizers.Adam(learning_rate=1e-3)
     model.compile(
         optimizer,
-        loss={"mels": "mae", "spectra": "mae"},
-        metrics={"mels": "mae", "spectra": "mae"},
+        loss={"pred_mels": "mae", "pred_spectra": "mae"},
+        metrics={"pred_mels": "mae", "pred_spectra": "mae"},
     )
-    # model.build()
-    model.fit(build_dataset(32))
+
+    ds = build_dataset(BATCH_SIZE)
+    model.fit(
+        x=[encoder_inputs(text), decoder_inputs(mels)],
+        y={"pred_mels": target_mels(mels), "pred_spectra": target_spectra(spectra)},
+        epochs=1,
+    )
 
 
 if __name__ == "__main__":

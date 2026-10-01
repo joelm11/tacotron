@@ -92,6 +92,7 @@ def preproc_entry(entry: MetadataEntry, out_dir):
             mode="constant",
             constant_values=mels.min(),
         )
+        mels = mels[:N_FRAMES, :]  # truncate if longer than target
         spectra = linear_scale_spectrogram(y, sr)
         spectra = np.pad(
             spectra,
@@ -99,6 +100,7 @@ def preproc_entry(entry: MetadataEntry, out_dir):
             mode="constant",
             constant_values=spectra.min(),
         )
+        spectra = spectra[:N_FRAMES, :]  # truncate if longer than target
 
         np.savez_compressed(
             out_path,
@@ -139,10 +141,10 @@ def build_preproc_pipeline():
 
 
 def format_batch(text, mels, spectra):
-    # Set shapes that tf.numpy_function stripped
-    text.set_shape([None, 256, 256])
-    mels.set_shape([None, 800, 80])
-    spectra.set_shape([None, 800, 1025])
+    # Set shapes that tf.numpy_function stripped (per-example, before batching)
+    text.set_shape([256, 256])
+    mels.set_shape([800, 80])
+    spectra.set_shape([800, 1025])
 
     return (
         {"text": text, "mels": mels},  # inputs
