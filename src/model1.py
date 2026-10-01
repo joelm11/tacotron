@@ -220,25 +220,24 @@ class TextToSpectra(keras.Model):
             # TODO generate() method for inference
             return
 
-        batch_size = text.shape[0]
         n_frames = mels.shape[1]
         n_mels = mels.shape[2]
 
         # Reshape mels - predict `r` frames at each time step
         mels = keras.ops.reshape(
-            mels, (batch_size, -1, r * n_mels)
+            mels, (-1, n_frames // r, r * n_mels)
         )  # (B, n_frames // r, r * n_mels)
 
-        enc_seq = self.encoder(text)  # (B, T, 128)
+        enc_seq = self.encoder(text, training=training)  # (B, T, 128)
 
-        pred_mels, _ = self.decoder(mels, enc_seq, training)  # (B, n_frames // r, r * n_mels)
+        pred_mels, _ = self.decoder(
+            mels, enc_seq, training=training
+        )  # (B, n_frames // r, r * n_mels)
         # Reshape output to match target
-        pred_mels = keras.ops.reshape(
-            pred_mels, (batch_size, n_frames, -1)
-        )  # (B, n_frames, n_mels)
+        pred_mels = keras.ops.reshape(pred_mels, (-1, n_frames, n_mels))  # (B, n_frames, n_mels)
 
         # TODO Unsure what shape is best to feed the mels to the post net
-        pred_spectra = self.post_net(pred_mels)
+        pred_spectra = self.post_net(pred_mels, training=training)
 
         return {"pred_mels": pred_mels, "pred_spectra": pred_spectra}
 

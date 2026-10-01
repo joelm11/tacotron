@@ -32,11 +32,7 @@ def main():
     )
 
     ds = build_dataset(BATCH_SIZE)
-    model.fit(
-        x=[encoder_inputs(text), decoder_inputs(mels)],
-        y={"pred_mels": target_mels(mels), "pred_spectra": target_spectra(spectra)},
-        epochs=1,
-    )
+    model.fit(ds, epochs=1)
 
 
 if __name__ == "__main__":

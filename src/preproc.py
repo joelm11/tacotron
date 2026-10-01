@@ -147,8 +147,8 @@ def format_batch(text, mels, spectra):
     spectra.set_shape([800, 1025])
 
     return (
-        {"text": text, "mels": mels},  # inputs
-        {"mels": mels, "spectra": spectra},  # targets
+        {"text": text, "mels": mels},  # inputs (dict)
+        {"pred_mels": mels, "pred_spectra": spectra},  # targets (keys match model output names)
     )
 
 
