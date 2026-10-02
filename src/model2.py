@@ -116,6 +116,7 @@ class DecoderCell(layers.Layer):
     # Decoder cell to be wrapped by RNN layer for sequence processing
     def __init__(self, units=256, n_mels=80, r=5):
         super().__init__()
+        self.enc_out_proj = None  # Set per-batch
         self.attn_rnn = layers.GRUCell(units)
         self.dec_rnn1 = layers.GRUCell(units)
         self.dec_rnn2 = layers.GRUCell(units)
@@ -134,31 +135,30 @@ class DecoderCell(layers.Layer):
     # As we concatenate the attn context and query vectors as input to the dec_rnn:
     # Better to project down for input to dec_rnn?
     # Or better to project attn_query down so that concat dim = U?
-    def call(self, inputs, states, constants):
+    def call(self, inputs, states):
         # inputs: mels (B, r * n_mels)
         # states: [s_attn_rnn, s_dec_rnn1, s_dec_rnn2]
         # constants: enc_keys_proj (B, T, U)
 
         s_a, s_d1, s_d2 = states
-        enc_keys, enc_keys_proj = constants
 
         # Generate attention query and attention context vector
         x = self.attn_proj(inputs)  # (B, U)
-        q, s_a_next = self.attn_rnn(x, states=s_a)  # (B, U)
+        q, [s_a_next] = self.attn_rnn(x, states=[s_a])  # (B, U)
         q_3 = keras.ops.expand_dims(q, axis=1)  # (B, 1, U)
-        c, _ = self.attn([q_3, enc_keys_proj], training=True)
+        c = self.attn([q_3, self.enc_out_proj], training=True)  # (B, 1, U)
         c = keras.ops.squeeze(c, axis=1)  # (B, U)
 
         # Generate output frames from decoder rnn
         dec_rnn_in = keras.ops.concatenate([c, q], axis=-1)  # (B, 2 * U)
         dec_rnn_in = self.dec_proj(dec_rnn_in)  # (B, U)
-        x1, s_d1_next = self.dec_rnn1(dec_rnn_in, states=s_d1)
+        x1, [s_d1_next] = self.dec_rnn1(dec_rnn_in, states=[s_d1])
         x1 = x1 + dec_rnn_in
-        x2, s_d2_next = self.dec_rnn2(x1, states=s_d2)
+        x2, [s_d2_next] = self.dec_rnn2(x1, states=[s_d2])
         x2 = x2 + x1
         frames = self.frame_proj(x2)  # (B, r * n_mels)
 
-        return frames, [s_a_next, s_d1_next, s_d2_next]
+        return frames, (s_a_next, s_d1_next, s_d2_next)
 
 
 class Decoder(layers.Layer):
@@ -174,20 +174,13 @@ class Decoder(layers.Layer):
         # target_mels: (B, T_dec, r * n_mels)
         # encoder_outputs: (B, T, D)
 
-        enc_outputs_proj = self.enc_key_proj(enc_outputs)
+        self.dec_cell.enc_out_proj = self.enc_key_proj(enc_outputs)
 
-        outputs, states = self.rnn(
+        outputs, *states = self.dec_rnn(
             target_mels,
             initial_state=initial_state,
-            constants=[enc_outputs, enc_outputs_proj],
         )
         return outputs, states
-
-    def get_initial_states(self, batch_size):
-        attn = keras.ops.zeros((batch_size, 256))
-        d1 = keras.ops.zeros((batch_size, 256))
-        d2 = keras.ops.zeros((batch_size, 256))
-        return (attn, d1, d2)
 
 
 class PostNet(layers.Layer):
@@ -224,7 +217,6 @@ class TextToSpectra(keras.Model):
             text = inputs if not isinstance(inputs, dict) else inputs.get("text", inputs)
             return self.generate(text, r=r)
 
-        batch_size = mels.shape[0]
         n_frames = mels.shape[1]
         n_mels = mels.shape[2]
 
@@ -232,7 +224,7 @@ class TextToSpectra(keras.Model):
         # Reshape mels: predict `r` frames at each time step
         mels = keras.ops.reshape(
             mels, (-1, n_frames // r, r * n_mels)
-        )  # (B, n_frames // r, r * n_mels)
+        )  # (B, T_dec=n_frames // r, r * n_mels)
         # Drop last frame and prepend 0 frame
         mels = mels[:, :-1, :]  # type: ignore
         zero_frame = keras.ops.zeros((keras.ops.shape(mels)[0], 1, r * n_mels))  # type: ignore
@@ -240,13 +232,13 @@ class TextToSpectra(keras.Model):
 
         enc_seq = self.encoder(text, training=training)  # (B, T, 128)
 
-        pred_mels, _ = self.decoder(
-            mels, enc_seq, self.decoder.get_initial_states(batch_size)
-        )  # (B, T_dec, r * n_mels)
+        pred_mels, _ = self.decoder(mels, enc_seq, None)  # (B, T_dec, r * n_mels)
 
         # TODO Unsure what shape is best to feed the mels to the post net
+        pred_mels = keras.ops.reshape(pred_mels, (-1, n_frames, n_mels))  # (B, n_frames, n_mels)
         pred_spectra = self.post_net(pred_mels)
 
+        # Reshape outputs for loss calculation
         return {"pred_mels": pred_mels, "pred_spectra": pred_spectra}
 
 

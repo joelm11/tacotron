@@ -3,6 +3,7 @@
 import os
 
 from model2 import TextToSpectra
+from preproc import build_dataset
 
 # Keep TensorFlow as the Keras backend (must be set before importing keras)
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
@@ -10,7 +11,6 @@ os.environ.setdefault("KERAS_BACKEND", "tensorflow")
 import tensorflow as tf
 
 from data import get_metadata_path, get_project_root
-from preproc import build_dataset
 
 SPEECH_MD = get_metadata_path(get_project_root())
 
@@ -28,8 +28,18 @@ def main():
         metrics={"pred_mels": "mae", "pred_spectra": "mae"},
     )
 
-    ds = build_dataset(BATCH_SIZE)
-    model.fit(ds, epochs=10)
+    ds = build_dataset(4)
+    # Grab 1 batch of size 4 and repeat it infinitely for fit()
+    single_batch_ds = ds.take(1).repeat()
+
+    model.fit(
+        single_batch_ds,
+        steps_per_epoch=1,  # 1 step per epoch ensures it only sees this exact batch
+        epochs=500,  # Tacotron models often need 200-1000+ steps to collapse loss
+    )
+
+
+# model.fit(ds, epochs=10)
 
 
 def _build_optimizer():
