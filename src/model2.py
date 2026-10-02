@@ -164,9 +164,10 @@ class DecoderCell(layers.Layer):
 class Decoder(layers.Layer):
     def __init__(self, r=5, n_mels=80, decoder_dim=256):
         super().__init__()
+        self.decoder_dim = 256
         self.prenet = PreNet()
         self.dec_cell = DecoderCell(decoder_dim, n_mels, r)
-        self.dec_rnn = layers.RNN(self.cell, return_sequences=True, return_state=True)
+        self.dec_rnn = layers.RNN(self.dec_cell, return_sequences=True, return_state=True)
         self.enc_key_proj = layers.Dense(decoder_dim, activation="linear")
 
     def call(self, target_mels, enc_outputs, initial_state=None):
@@ -183,10 +184,10 @@ class Decoder(layers.Layer):
         return outputs, states
 
     def get_initial_states(self, batch_size):
-        attn = keras.ops.zeros((batch_size, self.attn_rnn.cells))
-        d1 = keras.ops.zeros((batch_size, self.dec_rnn.g1.units))
-        d2 = keras.ops.zeros((batch_size, self.dec_rnn.g2.units))
-        return (attn, (d1, d2))
+        attn = keras.ops.zeros((batch_size, 256))
+        d1 = keras.ops.zeros((batch_size, 256))
+        d2 = keras.ops.zeros((batch_size, 256))
+        return (attn, d1, d2)
 
 
 class PostNet(layers.Layer):
@@ -196,7 +197,7 @@ class PostNet(layers.Layer):
         self.cbhg = Cbhg(8, (256, 128), 128)
         self.output_proj = layers.Dense(num_freq, use_bias=True)
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=True):
         # inputs: (B, T, r * 80)
         x = self.input_proj(inputs)
         x = self.cbhg(x, training=training)
@@ -223,10 +224,12 @@ class TextToSpectra(keras.Model):
             text = inputs if not isinstance(inputs, dict) else inputs.get("text", inputs)
             return self.generate(text, r=r)
 
+        batch_size = mels.shape[0]
         n_frames = mels.shape[1]
         n_mels = mels.shape[2]
 
-        # Reshape mels - predict `r` frames at each time step
+        ## Reshape mels and append <GO> frame
+        # Reshape mels: predict `r` frames at each time step
         mels = keras.ops.reshape(
             mels, (-1, n_frames // r, r * n_mels)
         )  # (B, n_frames // r, r * n_mels)
@@ -237,10 +240,15 @@ class TextToSpectra(keras.Model):
 
         enc_seq = self.encoder(text, training=training)  # (B, T, 128)
 
-        return
+        pred_mels, _ = self.decoder(
+            mels, enc_seq, self.decoder.get_initial_states(batch_size)
+        )  # (B, T_dec, r * n_mels)
+
+        # TODO Unsure what shape is best to feed the mels to the post net
+        pred_spectra = self.post_net(pred_mels)
+
+        return {"pred_mels": pred_mels, "pred_spectra": pred_spectra}
 
 
 # TODO For tomorrow
-# Rework attention to be iterative via wrapping in layers.RNN()
-# Project last encoder dimension to dimension needed for attention 128 -> 256
 # Implement iterative inference generate() method.

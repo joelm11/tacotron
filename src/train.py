@@ -2,7 +2,7 @@
 
 import os
 
-from model1 import TextToSpectra  # noqa: F401  -- preload NVIDIA libs before TF/Keras
+from model2 import TextToSpectra
 
 # Keep TensorFlow as the Keras backend (must be set before importing keras)
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
