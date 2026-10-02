@@ -2,7 +2,7 @@
 
 import os
 
-import gpu_setup  # noqa: F401  -- preload NVIDIA libs before TF/Keras
+from model1 import TextToSpectra  # noqa: F401  -- preload NVIDIA libs before TF/Keras
 
 # Keep TensorFlow as the Keras backend (must be set before importing keras)
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
@@ -10,7 +10,6 @@ os.environ.setdefault("KERAS_BACKEND", "tensorflow")
 import tensorflow as tf
 
 from data import get_metadata_path, get_project_root
-from model1 import TextToSpectra
 from preproc import build_dataset
 
 SPEECH_MD = get_metadata_path(get_project_root())

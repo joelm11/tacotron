@@ -3,10 +3,10 @@ Tacotron 1 layers and model.
 This time around I am trying the vectorized approach instead of the looped approach.
 """
 
-import gpu_setup  # noqa: F401  -- preload NVIDIA libs before TF/Keras
-
 import keras
 from keras import layers
+
+import gpu_setup  # noqa: F401  -- preload NVIDIA libs before TF/Keras
 
 
 class PreNet(layers.Layer):
@@ -17,11 +17,11 @@ class PreNet(layers.Layer):
         self.fc2 = layers.Dense(units, activation="relu")
         self.d2 = layers.Dropout(0.5)
 
-    def call(self, inputs, training=False):
+    def call(self, inputs):
         x = self.fc1(inputs)
-        x = self.d1(x, training=training)
+        x = self.d1(x, training=True)
         x = self.fc2(x)
-        x = self.d2(x, training=training)
+        x = self.d2(x, training=True)
         return x
 
 
@@ -101,9 +101,9 @@ class AttentionRnn(layers.Layer):
         self.cells = cells
         self.g1 = layers.GRU(self.cells, return_sequences=True, return_state=True)
 
-    def call(self, inputs):
+    def call(self, inputs, initial_state=None):
         # inputs: (B, T, D)
-        x, s = self.g1(inputs)
+        x, s = self.g1(inputs, initial_state=initial_state)
         return x, s
 
 
@@ -115,13 +115,16 @@ class DecoderRnn(layers.Layer):
         self.g2 = layers.GRU(cells, return_sequences=True, return_state=True)
         self.frame_proj = layers.Dense(num_mels * r, activation=None)
 
-    def call(self, inputs):
+    def call(self, inputs, initial_state=None):
         # inputs: (B, T, C + Q)
         # outputs: (B, T, r * num_mels)
         x = self.input_proj(inputs)
-        x1, s1 = self.g1(x)
+        s1_0, s2_0 = (None, None)
+        if initial_state is not None:
+            s1_0, s2_0 = initial_state
+        x1, s1 = self.g1(x, initial_state=s1_0)
         x1 = x1 + x
-        x2, s2 = self.g2(x1)
+        x2, s2 = self.g2(x1, initial_state=s2_0)
         x2 = x2 + x1
         outputs = self.frame_proj(x2)
         return outputs, (s1, s2)
@@ -165,7 +168,7 @@ class Decoder(layers.Layer):
         self.attn = Attention()
         self.dec_rnn = DecoderRnn()
 
-    def call(self, inputs, encoder_outputs, training=False):
+    def call(self, inputs, encoder_outputs, initial_state=None, training=False):
         # inputs: (B, T, D)
         # encoder_outputs: (B, T, D)
 
@@ -175,13 +178,35 @@ class Decoder(layers.Layer):
 
         x = self.prenet(x, training=training)  # (B, T, 128)
         x = self.proj2(x)  # (B, T, 256)
-        q, s_a = self.attn_rnn(x)  # (B, T, 256)
+
+        attn_state = None
+        dec_state = None
+        if initial_state is not None:
+            attn_state, dec_state = initial_state
+
+        q, s_a = self.attn_rnn(x, initial_state=attn_state)  # (B, T, 256)
         c = self.attn(q, encoder_outputs)  # (B, T, 256)
-        x, s_d = self.dec_rnn(keras.ops.concatenate([c, q], axis=-1))  # (B, T, r * num_mels)
+        x, s_d = self.dec_rnn(
+            keras.ops.concatenate([c, q], axis=-1), initial_state=dec_state
+        )  # (B, T, r * num_mels)
         return x, (s_a, s_d)
 
-    def generate(self, inputs):
-        pass
+    def generate(self, encoder_outputs, max_steps=200, r=5, n_mels=80):
+        batch_size = keras.ops.shape(encoder_outputs)[0]
+        states = self.get_initial_states(batch_size)
+        # Start with a zero frame
+        prev_mels = keras.ops.zeros((batch_size, 1, r * n_mels))
+        outputs = []
+        for _ in range(max_steps):
+            mel_frame, states = self.call(
+                prev_mels, encoder_outputs, initial_state=states, training=False
+            )
+            outputs.append(mel_frame)
+            # Use the predicted frame as the next input (autoregressive)
+            prev_mels = mel_frame
+        pred_mels = keras.ops.concatenate(outputs, axis=1)  # (B, max_steps, r * n_mels)
+        pred_mels = keras.ops.reshape(pred_mels, (batch_size, -1, n_mels))
+        return pred_mels
 
     def get_initial_states(self, batch_size):
         attn = keras.ops.zeros((batch_size, self.attn_rnn.cells))
@@ -211,6 +236,8 @@ class TextToSpectra(keras.Model):
         self.encoder = Encoder()
         self.decoder = Decoder()
         self.post_net = PostNet(num_freq)
+        self.r = 5
+        self.n_mels = 80
 
     def call(self, inputs, r=5, training=False):
         # inputs[0] (text): (B, T=256, D=256)
@@ -219,8 +246,8 @@ class TextToSpectra(keras.Model):
             text = inputs["text"]
             mels = inputs["mels"]
         else:
-            # TODO generate() method for inference
-            return
+            text = inputs if not isinstance(inputs, dict) else inputs.get("text", inputs)
+            return self.generate(text, r=r)
 
         n_frames = mels.shape[1]
         n_mels = mels.shape[2]
@@ -247,5 +274,17 @@ class TextToSpectra(keras.Model):
 
         return {"pred_mels": pred_mels, "pred_spectra": pred_spectra}
 
-    def generate(self, inputs):
-        pass
+    def generate(self, text, max_frames=800, r=5):
+        max_steps = max_frames // r
+        enc_seq = self.encoder(text, training=False)
+        pred_mels = self.decoder.generate(enc_seq, max_steps=max_steps, r=r, n_mels=self.n_mels)
+        pred_spectra = self.post_net(pred_mels, training=False)
+        return {"pred_mels": pred_mels, "pred_spectra": pred_spectra}
+
+
+# TODO For tomorrow
+# Rework attention to be iterative via wrapping in layers.RNN()
+# Project last encoder dimension to dimension needed for attention 128 -> 256
+# Implement iterative inference generate() method.
+# Solve `PostNet Spectrogram Dimension Mismatch` by projecting (B, n_frames // r, r * n_mels)
+#   to (B, n_frames // r, 128)

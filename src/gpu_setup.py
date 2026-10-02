@@ -8,24 +8,22 @@ available globally via `ctypes.RTLD_GLOBAL`.
 
 import ctypes
 import glob
-import importlib.util
 import os
-import sys
 
 # Map of nvidia package names to the library file(s) we need from each.
 # Order matters roughly by dependency (base runtime first, then libs that
 # depend on it).  We do multiple passes so inter-library deps are resolved.
 _LIBS = {
     "cuda_runtime": ["libcudart.so.*"],
-    "cublas":       ["libcublas.so.*", "libcublasLt.so.*"],
-    "cuda_nvrtc":   ["libnvrtc.so.*"],
-    "cudnn":        ["libcudnn.so.*"],
-    "cufft":        ["libcufft.so.*"],
-    "curand":       ["libcurand.so.*"],
-    "cusolver":     ["libcusolver.so.*"],
-    "cusparse":     ["libcusparse.so.*"],
-    "nvjitlink":    ["libnvJitLink.so.*"],
-    "nccl":         ["libnccl.so.*"],
+    "cublas": ["libcublas.so.*", "libcublasLt.so.*"],
+    "cuda_nvrtc": ["libnvrtc.so.*"],
+    "cudnn": ["libcudnn.so.*"],
+    "cufft": ["libcufft.so.*"],
+    "curand": ["libcurand.so.*"],
+    "cusolver": ["libcusolver.so.*"],
+    "cusparse": ["libcusparse.so.*"],
+    "nvjitlink": ["libnvJitLink.so.*"],
+    "nccl": ["libnccl.so.*"],
 }
 
 
@@ -33,6 +31,7 @@ def _find_nvidia_base() -> str | None:
     """Return the directory that contains all nvidia.* packages."""
     try:
         import nvidia
+
         # nvidia is a namespace package; __path__ points to the base dir
         return str(nvidia.__path__[0])
     except Exception:
