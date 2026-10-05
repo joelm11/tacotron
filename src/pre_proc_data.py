@@ -136,8 +136,10 @@ def _proc_sample(sample, out_dir):
         return None
 
 
-def make_dataset(batch_size=32):
+def make_dataset(batch_size=32, r=5):
     # Bucket sample data based on text len by reading manifest
+    # Text in a bucket is padded to the max text length in the bucket
+    # Mels and spectra are padded to the max mel length in the bucket that is divisible by r
     # Construct batches from buckets
     return
 
