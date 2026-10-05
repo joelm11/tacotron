@@ -56,7 +56,7 @@ def mel_scale_spectrogram(y, sr):
         n_mels=N_MELS,
         window="hann",
     )
-    return librosa.power_to_db(mels_db, ref=np.max).T.astype(np.float32)
+    return librosa.power_to_db(mels_db, ref=1.0).T.astype(np.float32)
 
 
 def linear_scale_spectrogram(y, sr):
@@ -71,7 +71,7 @@ def linear_scale_spectrogram(y, sr):
         center=False,
     )
     mag = np.abs(stft)
-    return librosa.amplitude_to_db(mag, ref=np.max).T.astype(np.float32)
+    return librosa.amplitude_to_db(mag, ref=1.0).T.astype(np.float32)
 
 
 def preproc_entry(entry: MetadataEntry, out_dir):
@@ -82,25 +82,10 @@ def preproc_entry(entry: MetadataEntry, out_dir):
     try:
         y, sr = librosa.load(entry.wav_path, sr=TARGET_SR)
 
+        # Compute features
         ohe_text = text_embeddings(entry.text)
-
-        # Calculate and pad acoustic features
         mels = mel_scale_spectrogram(y, sr)
-        mels = np.pad(
-            mels,
-            pad_width=((0, max(0, N_FRAMES - mels.shape[0])), (0, 0)),
-            mode="constant",
-            constant_values=mels.min(),
-        )
-        mels = mels[:N_FRAMES, :]  # truncate if longer than target
         spectra = linear_scale_spectrogram(y, sr)
-        spectra = np.pad(
-            spectra,
-            pad_width=((0, max(0, N_FRAMES - spectra.shape[0])), (0, 0)),
-            mode="constant",
-            constant_values=spectra.min(),
-        )
-        spectra = spectra[:N_FRAMES, :]  # truncate if longer than target
 
         np.savez_compressed(
             out_path,
@@ -128,7 +113,6 @@ def build_preproc_pipeline():
             label, text = row[0], row[2] if len(row) > 2 else row[1]
             entries.append(MetadataEntry(label, text, get_wav_path(p_root, label)))
 
-    # Construct features from metadata entries
     results = []
     with Pool() as pool:
         results = list(
@@ -138,6 +122,14 @@ def build_preproc_pipeline():
             )
         )
     return f_out_dir
+
+
+def load_dataset(batch_size=32):
+    # Sort entries into buckets based on text length. Buckets are 16 chars apart.
+    # Construct batches from these buckets.
+    # Text in each batch is padded to max text length in batch.
+    # Mels and spectra in each batch are padded to max n_mels in batch divisible by `r`.
+    return
 
 
 def format_batch(text, mels, spectra):
