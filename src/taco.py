@@ -26,21 +26,20 @@ class Tts(keras.Model):
         n_frames = keras.ops.shape(mels)[1]
         n_mels = mels.shape[2]
 
-        ## Reshape mels, append <GO> frame, keep every `r`th frame
-        mels = keras.ops.reshape(mels, (batch_size, n_frames // r, r * n_mels))
-        mels = keras.ops.concatenate(
-            [keras.ops.zeros((batch_size, n_frames // r, r * n_mels)), mels], axis=1
-        )
-        mels = mels[:, :, -n_mels:]
+        # Group target mel frames by reduction factor r
+        grouped = keras.ops.reshape(mels, (batch_size, n_frames // r, r, n_mels))
+        # Teacher forcing input: last frame of each group, shifted right with zero <GO> frame
+        dec_input_frames = grouped[:, :, -1, :]  # (B, T//r, n_mels)
+        go_frame = keras.ops.zeros((batch_size, 1, n_mels))
+        dec_input = keras.ops.concatenate([go_frame, dec_input_frames[:, :-1, :]], axis=1)
 
-        zero_frame = keras.ops.zeros((keras.ops.shape(mels)[0], 1, r * n_mels))  # type: ignore
-        mels = keras.ops.concatenate([zero_frame, mels], axis=1)
+        enc_seq = self.encoder(text, training=training)  # (B, T_text, 256)
 
-        enc_seq = self.encoder(text, training=training)  # (B, T, 256)
+        pred_mels_grouped, _ = self.decoder(dec_input, enc_seq, None)  # (B, T//r, r * n_mels)
 
-        pred_mels, _ = self.decoder(mels, enc_seq, None)  # (B, T_dec, r * n_mels)
+        # Reshape predictions back to full time resolution for loss
+        pred_mels = keras.ops.reshape(pred_mels_grouped, (batch_size, n_frames, n_mels))
 
-        pred_spectra = self.post_net(pred_mels)  # (B, T, n_freq)
+        pred_spectra = self.post_net(pred_mels_grouped)  # (B, T, n_freq)
 
-        # Reshape outputs for loss calculation
         return {"pred_mels": pred_mels, "pred_spectra": pred_spectra}

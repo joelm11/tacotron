@@ -70,10 +70,9 @@ class Decoder(layers.Layer):
         # Each sample has its own encoded sequence that we want to decode?
         # Maybe this is taken care of?
 
+        x = self.prenet(target_mels)
         self.dec_cell.enc_out_proj = enc_outputs
-        outputs, *states = self.dec_rnn(
-            target_mels, initial_state=initial_state
-        )  # (B, T_dec, r * n_mels)
+        outputs, *states = self.dec_rnn(x, initial_state=initial_state)  # (B, T_dec, r * n_mels)
 
         return outputs, states
 

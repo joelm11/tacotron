@@ -34,8 +34,9 @@ def main():
 
     model.fit(
         single_batch_ds,
+        # make_dataset(32, 5),
         steps_per_epoch=1,  # 1 step per epoch ensures it only sees this exact batch
-        epochs=500,  # Tacotron models often need 200-1000+ steps to collapse loss
+        epochs=1000,  # Tacotron models often need 200-1000+ steps to collapse loss
     )
 
 
