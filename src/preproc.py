@@ -124,12 +124,92 @@ def build_preproc_pipeline():
     return f_out_dir
 
 
-def load_dataset(batch_size=32):
-    # Sort entries into buckets based on text length. Buckets are 16 chars apart.
-    # Construct batches from these buckets.
-    # Text in each batch is padded to max text length in batch.
-    # Mels and spectra in each batch are padded to max n_mels in batch divisible by `r`.
-    return
+def load_dataset(batch_size=32, r=5):
+    feat_dir = get_feat_dir(get_project_root())
+    md_path = get_metadata_path(get_project_root())
+
+    # Map each label to its text length for bucketing.
+    text_lens = {}
+    with open(md_path, newline="") as f:
+        reader = csv.reader(f, delimiter="|")
+        for row in reader:
+            label = row[0]
+            text = row[2] if len(row) > 2 else row[1]
+            text_lens[label] = min(len(text), MAX_SEQ_LENGTH)
+
+    # Group .npz paths into buckets of width 16 chars.
+    buckets = {}
+    for p in feat_dir.glob("*.npz"):
+        label = p.stem
+        text_len = text_lens.get(label, MAX_SEQ_LENGTH)
+        bucket_id = max(text_len - 1, 0) // 16
+        buckets.setdefault(bucket_id, []).append(str(p))
+
+    def load(path):
+        with np.load(path.decode()) as d:
+            text = d["text"]
+            # Recover unpadded length from trailing all-zero rows.
+            text_len = int(np.count_nonzero(np.any(text != 0, axis=1)))
+            return (
+                text[:text_len].astype(np.float32),
+                d["mels"].astype(np.float32),
+                d["spectra"].astype(np.float32),
+            )
+
+    def ensure_shapes(text, mels, spectra):
+        text.set_shape([None, 256])
+        mels.set_shape([None, 80])
+        spectra.set_shape([None, 1025])
+        return text, mels, spectra
+
+    def pad_to_r(text, mels, spectra):
+        frames = tf.shape(mels)[1]
+        pad = (r - frames % r) % r
+        if tf.greater(pad, 0):
+            mels = tf.pad(mels, [[0, 0], [0, pad], [0, 0]])
+            spectra = tf.pad(spectra, [[0, 0], [0, pad], [0, 0]])
+        return text, mels, spectra
+
+    def format_padded_batch(text, mels, spectra):
+        return (
+            {"text": text, "mels": mels},
+            {"pred_mels": mels, "pred_spectra": spectra},
+        )
+
+    datasets = []
+    weights = []
+    for bucket_id in sorted(buckets.keys()):
+        paths = buckets[bucket_id]
+        ds = tf.data.Dataset.from_tensor_slices(paths)
+        ds = ds.shuffle(buffer_size=len(paths))
+        ds = ds.map(
+            lambda p: tf.numpy_function(load, [p], [tf.float32, tf.float32, tf.float32]),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
+        ds = ds.map(ensure_shapes, num_parallel_calls=tf.data.AUTOTUNE)
+        ds = ds.padded_batch(
+            batch_size,
+            padded_shapes=([None, 256], [None, 80], [None, 1025]),
+            padding_values=(np.float32(0), np.float32(0), np.float32(0)),
+        )
+        ds = ds.map(pad_to_r, num_parallel_calls=tf.data.AUTOTUNE)
+        ds = ds.map(format_padded_batch, num_parallel_calls=tf.data.AUTOTUNE)
+        ds = ds.prefetch(tf.data.AUTOTUNE)
+        datasets.append(ds)
+        weights.append(len(paths))
+
+    if not datasets:
+        return tf.data.Dataset.from_tensor_slices([])
+
+    return tf.data.Dataset.sample_from_datasets(datasets, weights=weights)
+
+
+# Data processing pipeline
+# End result: Batches of similarly sized sequences that are all padded to the same length
+# Samples are bucketed by text length
+# Sample data all packed to length of max length in bucket
+# Batches are taken from buckets
+# Data can be preprocessed but needs to be labelled for sorting into buckets
 
 
 def format_batch(text, mels, spectra):

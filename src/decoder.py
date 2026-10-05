@@ -60,7 +60,6 @@ class Decoder(layers.Layer):
         self.prenet = PreNet()
         self.dec_cell = DecoderCell(r, n_mels, units)
         self.dec_rnn = layers.RNN(self.dec_cell, return_sequences=True, return_state=True)
-        self.enc_key_proj = layers.Dense(units, activation="linear")
 
     def call(self, target_mels, enc_outputs, initial_state=None):
         # target_mels: (B, T_dec, n_mels)
@@ -80,19 +79,20 @@ class Decoder(layers.Layer):
 
 
 class PostNet(layers.Layer):
-    def __init__(self, num_freq=1025):
+    def __init__(self, r=5, n_mels=80, num_freq=1025):
         super().__init__()
-        self.input_proj = layers.Dense(128, use_bias=True)
+        self.r = r
+        self.n_mels = n_mels
+        self.input_proj = layers.Dense(128, activation="linear")
         self.cbhg = Cbhg(8, (256, 128), 128)
-        self.output_proj = layers.Dense(num_freq, use_bias=True)
+        self.output_proj = layers.Dense(num_freq, activation="linear")
 
     def call(self, inputs, training=True):
         # inputs: (B, T_dec, r * n_mels)
         # outputs: (B, T, n_fft)
 
-        # TODO According to described shapes
-        # E.g./ reshape input
-
+        shape = inputs.shape
+        inputs = keras.ops.reshape(inputs, (shape[0], shape[1] * self.r, self.n_mels))
         x = self.input_proj(inputs)
         x = self.cbhg(x, training=training)
         x = self.output_proj(x)

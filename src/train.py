@@ -2,8 +2,8 @@
 
 import os
 
-from model2 import TextToSpectra
 from preproc import build_dataset
+from taco import Tts
 
 # Keep TensorFlow as the Keras backend (must be set before importing keras)
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
@@ -21,7 +21,7 @@ def main():
         tf.config.experimental.set_memory_growth(gpu, True)
 
     BATCH_SIZE = 32
-    model = TextToSpectra()
+    model = Tts()
     model.compile(
         _build_optimizer(),
         loss={"pred_mels": "mae", "pred_spectra": "mae"},

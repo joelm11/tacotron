@@ -8,9 +8,16 @@ from pathlib import Path
 
 import librosa
 import numpy as np
+import tensorflow as tf
 from tqdm import tqdm
 
-from data import get_metadata_path, get_project_root, get_wav_path, setup_dir_structure
+from data import (
+    get_feat_dir,
+    get_metadata_path,
+    get_project_root,
+    get_wav_path,
+    setup_dir_structure,
+)
 
 # Construct batches from feature metadata and offline features (bucketing)
 
@@ -29,8 +36,7 @@ class Sample:
 
 def text_embeddings(text: str):
     ints = [ord(ch) for ch in text[:MAX_TEXT_LEN]]
-    ints_pad = ints + [0] * (MAX_TEXT_LEN - len(ints))
-    ohe = np.eye(256, dtype=np.float32)[ints_pad]
+    ohe = np.eye(256, dtype=np.float32)[ints]
     return ohe
 
 
@@ -137,11 +143,55 @@ def _proc_sample(sample, out_dir):
 
 
 def make_dataset(batch_size=32, r=5):
-    # Bucket sample data based on text len by reading manifest
-    # Text in a bucket is padded to the max text length in the bucket
-    # Mels and spectra are padded to the max mel length in the bucket that is divisible by r
-    # Construct batches from buckets
-    return
+    """Bucketed tf.data.Dataset from pre-processed features."""
+    feat_dir = get_feat_dir(get_project_root())
+    rows = list(csv.DictReader(open(feat_dir / "manifest.csv")))
+    buckets = {}
+    for row in rows:
+        buckets.setdefault(max(int(row["text_len"]) - 1, 0) // 16, []).append(row)
+
+    def load(p):
+        with np.load(p.decode()) as d:
+            return (
+                d["text"].astype(np.float32),
+                d["mels"].astype(np.float32),
+                d["spectra"].astype(np.float32),
+            )
+
+    A = tf.data.AUTOTUNE
+    dss, w = [], []
+    for k in sorted(buckets):
+        b = buckets[k]
+        if len(b) < batch_size:
+            continue
+        max_t = max(int(r["text_len"]) for r in b)
+        max_m = ((max(int(r["mel_len"]) for r in b) + r - 1) // r) * r
+        paths = [r["path"] for r in b]
+        pad = lambda x, l: tf.pad(x[:l], [[0, l - tf.shape(x)[0]], [0, 0]])
+
+        def proc(t, m, s, mt=max_t, mm=max_m):
+            t.set_shape([None, 256])
+            m.set_shape([None, 80])
+            s.set_shape([None, 1025])
+            return pad(t, mt), pad(m, mm), pad(s, mm)
+
+        ds = tf.data.Dataset.from_tensor_slices(paths)
+        ds = (
+            ds.shuffle(len(paths))
+            .map(lambda p: tf.numpy_function(load, [p], 3 * [tf.float32]), A)
+            .map(proc, A)
+            .padded_batch(batch_size, drop_remainder=True)
+            .map(lambda t, m, s: ({"text": t, "mels": m}, {"pred_mels": m, "pred_spectra": s}), A)
+            .prefetch(A)
+        )
+        dss.append(ds)
+        w.append(len(b))
+
+    return (
+        tf.data.Dataset.sample_from_datasets(dss, w)
+        if dss
+        else tf.data.Dataset.from_tensor_slices([])
+    )
 
 
 def main():

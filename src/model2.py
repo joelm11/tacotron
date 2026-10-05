@@ -8,11 +8,11 @@ from keras import layers
 
 
 class PreNet(layers.Layer):
-    def __init__(self, input_dim=256, units=128):
+    def __init__(self):
         super().__init__()
-        self.fc1 = layers.Dense(input_dim, activation="relu")
+        self.fc1 = layers.Dense(256, activation="relu")
         self.d1 = layers.Dropout(0.5)
-        self.fc2 = layers.Dense(units, activation="relu")
+        self.fc2 = layers.Dense(128, activation="relu")
         self.d2 = layers.Dropout(0.5)
 
     def call(self, inputs):
