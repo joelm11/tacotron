@@ -91,7 +91,7 @@ class PostNet(layers.Layer):
         # inputs: (B, T_dec, r * n_mels)
         # outputs: (B, T, n_fft)
 
-        shape = inputs.shape
+        shape = keras.ops.shape(inputs)
         inputs = keras.ops.reshape(inputs, (shape[0], shape[1] * self.r, self.n_mels))
         x = self.input_proj(inputs)
         x = self.cbhg(x, training=training)

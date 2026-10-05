@@ -2,7 +2,7 @@
 
 import os
 
-from preproc import build_dataset
+from pre_proc_data import make_dataset
 from taco import Tts
 
 # Keep TensorFlow as the Keras backend (must be set before importing keras)
@@ -28,7 +28,7 @@ def main():
         metrics={"pred_mels": "mae", "pred_spectra": "mae"},
     )
 
-    ds = build_dataset(4)
+    ds = make_dataset(4, 5)
     # Grab 1 batch of size 4 and repeat it infinitely for fit()
     single_batch_ds = ds.take(1).repeat()
 

@@ -185,7 +185,7 @@ def make_dataset(batch_size=32, r=5):
             .prefetch(A)
         )
         dss.append(ds)
-        w.append(len(b))
+        w.append(float(len(b)))
 
     return (
         tf.data.Dataset.sample_from_datasets(dss, w)
