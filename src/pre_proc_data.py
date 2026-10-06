@@ -48,7 +48,7 @@ def text_embeddings(text: str):
 
 def _get_spectrograms(y, sr):
     """Returns normalized log-melspectrogram and log-magnitude spectrogram."""
-    # stft
+    # Stft
     linear = librosa.stft(
         y,
         n_fft=N_FFT,
@@ -57,19 +57,19 @@ def _get_spectrograms(y, sr):
     )
     mag = np.abs(linear)  # (1+n_fft//2, T)
 
-    # mel spectrogram
+    # Mel spectrogram
     mel_basis = librosa.filters.mel(sr=sr, n_fft=N_FFT, n_mels=N_MELS)  # (n_mels, 1+n_fft//2)
     mel = np.dot(mel_basis, mag)  # (n_mels, T)
 
-    # db
+    # Db
     mel = 20 * np.log10(np.maximum(1e-5, mel))
     mag = 20 * np.log10(np.maximum(1e-5, mag))
 
-    # normalize
+    # Normalize
     mel = np.clip((mel - REF_DB + MAX_DB) / MAX_DB, 1e-8, 1)
     mag = np.clip((mag - REF_DB + MAX_DB) / MAX_DB, 1e-8, 1)
 
-    # transpose
+    # Transpose
     mel = mel.T.astype(np.float32)  # (T, n_mels)
     mag = mag.T.astype(np.float32)  # (T, 1+n_fft//2)
 
