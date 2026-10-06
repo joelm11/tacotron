@@ -27,15 +27,13 @@ def main():
         loss={"pred_mels": "mae", "pred_spectra": "mae"},
     )
 
-    ds = make_dataset(4, 5)
-    # Grab 1 batch of size 4 and repeat it infinitely for fit()
+    # Grab 1 batch of size 1 and repeat it infinitely for fit()
+    ds = make_dataset(1, 5)
     single_batch_ds = ds.take(1).repeat()
-
     model.fit(
         single_batch_ds,
-        # make_dataset(32, 5),
         steps_per_epoch=1,  # 1 step per epoch ensures it only sees this exact batch
-        epochs=1000,  # Tacotron models often need 200-1000+ steps to collapse loss
+        epochs=200,  # Tacotron models often need 200-1000+ steps to collapse loss
     )
 
 

@@ -19,12 +19,18 @@ from data import (
     setup_dir_structure,
 )
 
-# Construct batches from feature metadata and offline features (bucketing)
-
-MAX_TEXT_LEN = 256
-MAX_FRAMES_LEN = 10
-TARGET_SR = 24e3
+# Audio constants matching reference Hyperparams
+SR = 22050
+N_FFT = 2048
+FRAME_SHIFT = 0.0125  # seconds
+FRAME_LENGTH = 0.05  # seconds
+HOP_LENGTH = int(SR * FRAME_SHIFT)  # 275
+WIN_LENGTH = int(SR * FRAME_LENGTH)  # 1102
 N_MELS = 80
+PREEMPHASIS = 0.97
+MAX_DB = 100
+REF_DB = 20
+MAX_TEXT_LEN = 256
 
 
 @dataclass
@@ -40,35 +46,34 @@ def text_embeddings(text: str):
     return ohe
 
 
-def mel_scale_spectrogram(y, sr):
-    frame_size = int(sr * 0.05)
-    hop_size = int(sr * 0.0125)
-    mels_db = librosa.feature.melspectrogram(
-        y=y,
-        sr=sr,
-        n_fft=2048,
-        win_length=frame_size,
-        hop_length=hop_size,
-        center=False,
-        n_mels=N_MELS,
-        window="hann",
+def _get_spectrograms(y, sr):
+    """Returns normalized log-melspectrogram and log-magnitude spectrogram."""
+    # stft
+    linear = librosa.stft(
+        y,
+        n_fft=N_FFT,
+        hop_length=HOP_LENGTH,
+        win_length=WIN_LENGTH,
     )
-    return librosa.power_to_db(mels_db, ref=1.0).T.astype(np.float32)
+    mag = np.abs(linear)  # (1+n_fft//2, T)
 
+    # mel spectrogram
+    mel_basis = librosa.filters.mel(sr=sr, n_fft=N_FFT, n_mels=N_MELS)  # (n_mels, 1+n_fft//2)
+    mel = np.dot(mel_basis, mag)  # (n_mels, T)
 
-def linear_scale_spectrogram(y, sr):
-    frame_size = int(sr * 0.05)
-    hop_size = int(sr * 0.0125)
-    stft = librosa.stft(
-        y=y,
-        n_fft=2048,
-        win_length=frame_size,
-        hop_length=hop_size,
-        window="hann",
-        center=False,
-    )
-    mag = np.abs(stft)
-    return librosa.amplitude_to_db(mag, ref=1.0).T.astype(np.float32)
+    # to decibel
+    mel = 20 * np.log10(np.maximum(1e-5, mel))
+    mag = 20 * np.log10(np.maximum(1e-5, mag))
+
+    # normalize
+    mel = np.clip((mel - REF_DB + MAX_DB) / MAX_DB, 1e-8, 1)
+    mag = np.clip((mag - REF_DB + MAX_DB) / MAX_DB, 1e-8, 1)
+
+    # Transpose
+    mel = mel.T.astype(np.float32)  # (T, n_mels)
+    mag = mag.T.astype(np.float32)  # (T, 1+n_fft//2)
+
+    return mel, mag
 
 
 def pre_proc_data():
@@ -127,12 +132,17 @@ def _proc_sample(sample, out_dir):
         return out_path
 
     try:
-        y, sr = librosa.load(sample.wav_path, sr=TARGET_SR)
+        y, sr = librosa.load(sample.wav_path, sr=SR)
+
+        # Trimming
+        y, _ = librosa.effects.trim(y)
+
+        # Preemphasis
+        y = np.append(y[0], y[1:] - PREEMPHASIS * y[:-1])
 
         # Compute features
         ohe_text = text_embeddings(sample.text)
-        mels = mel_scale_spectrogram(y, sr)
-        spectra = linear_scale_spectrogram(y, sr)
+        mels, spectra = _get_spectrograms(y, sr)
 
         np.savez_compressed(out_path, text=ohe_text, mels=mels, spectra=spectra)
         return out_path
