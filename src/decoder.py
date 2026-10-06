@@ -18,11 +18,15 @@ class DecoderCell(layers.Layer):
         self.attn_rnn = layers.GRUCell(units)
         self.dec_rnn1 = layers.GRUCell(units)
         self.dec_rnn2 = layers.GRUCell(units)
-        self.attn = layers.AdditiveAttention()
+        self.attn = layers.Attention()
 
         # Projection layers
         self.dec_proj = layers.Dense(units, activation="linear")
         self.frame_proj = layers.Dense(r * n_mels, activation="linear")
+        # Attention projection layers
+        self.q_proj = layers.Dense(units, activation="linear")
+        self.k_proj = layers.Dense(units, activation="linear")
+        self.out_proj = layers.Dense(units, activation="linear")
 
         # Declare cell specs
         self.state_size = (units, units, units)
@@ -38,7 +42,10 @@ class DecoderCell(layers.Layer):
         # Generate attention query and attention context vector
         q, [s_a_next] = self.attn_rnn(inputs, states=[s_a])  # (B, U=256)
         q_3 = keras.ops.expand_dims(q, axis=1)  # (B, 1, U)
-        c = self.attn([q_3, self.enc_out_proj], training=True)  # (B, 1, U)
+        c = self.attn(
+            [self.q_proj(q_3), self.k_proj(self.enc_out_proj)], training=True
+        )  # (B, 1, U)
+        c = self.out_proj(c)
         c = keras.ops.squeeze(c, axis=1)  # (B, U)
 
         # Generate output frames from decoder rnn

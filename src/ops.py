@@ -22,8 +22,11 @@ class HighwayNet(layers.Layer):
     def __init__(self, units=128):
         super().__init__()
         self.h = layers.Dense(units, activation="relu")
+
+        initz = keras.initializers.Constant(value=-1.0)
         self.t = layers.Dense(
             units,
+            kernel_initializer=initz,  # type: ignore
             activation="sigmoid",
         )
 
