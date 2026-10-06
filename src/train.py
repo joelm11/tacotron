@@ -25,7 +25,6 @@ def main():
     model.compile(
         _build_optimizer(),
         loss={"pred_mels": "mae", "pred_spectra": "mae"},
-        metrics={"pred_mels": "mae", "pred_spectra": "mae"},
     )
 
     ds = make_dataset(4, 5)

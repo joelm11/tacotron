@@ -29,7 +29,7 @@ class DecoderCell(layers.Layer):
         self.out_proj = layers.Dense(units, activation="linear")
 
         # Declare cell specs
-        self.state_size = (units, units, units)
+        self.state_size = (units, units, units, units)
         self.output_size = r * n_mels
 
     def call(self, inputs, states):
@@ -37,10 +37,11 @@ class DecoderCell(layers.Layer):
         # states: [s_attn_rnn, s_dec_rnn1, s_dec_rnn2]
         # outputs: (B, r * n_mels), states
 
-        s_a, s_d1, s_d2 = states
+        s_a, s_d1, s_d2, c_prev = states
 
         # Generate attention query and attention context vector
-        q, [s_a_next] = self.attn_rnn(inputs, states=[s_a])  # (B, U=256)
+        attn_input = keras.ops.concatenate([inputs, c_prev], axis=-1)
+        q, [s_a_next] = self.attn_rnn(attn_input, states=[s_a])  # (B, U=256)
         q_3 = keras.ops.expand_dims(q, axis=1)  # (B, 1, U)
         c = self.attn(
             [self.q_proj(q_3), self.k_proj(self.enc_out_proj)], training=True
@@ -57,7 +58,7 @@ class DecoderCell(layers.Layer):
         x2 = x2 + x1
         frames = self.frame_proj(x2)  # (B, r * n_mels)
 
-        return frames, (s_a_next, s_d1_next, s_d2_next)
+        return frames, (s_a_next, s_d1_next, s_d2_next, c)
 
 
 class Decoder(layers.Layer):
@@ -71,11 +72,6 @@ class Decoder(layers.Layer):
     def call(self, target_mels, enc_outputs, initial_state=None):
         # target_mels: (B, T_dec, n_mels)
         # encoder_outputs: (B, T, D)
-
-        # NOTE
-        # Shouldn't we have a decoder cell per batch sample?
-        # Each sample has its own encoded sequence that we want to decode?
-        # Maybe this is taken care of?
 
         x = self.prenet(target_mels)
         self.dec_cell.enc_out_proj = enc_outputs
