@@ -28,6 +28,9 @@ data: ## Download and prepare the dataset
 preproc: ## Preprocess input text
 	$(PYTHON) $(SRC_DIR)/pre_proc_data.py
 
+model: ## Build the model
+	$(PYTHON) $(SRC_DIR)/model.py
+
 train: ## Train the model (uses GPU if available, otherwise CPU)
 	$(PYTHON) $(SRC_DIR)/train.py
 

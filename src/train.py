@@ -3,8 +3,8 @@
 import os
 
 from data import get_project_root
+from model import Tts
 from pre_proc_data import make_dataset
-from taco import Tts
 
 # Keep TensorFlow as the Keras backend (must be set before importing keras)
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
