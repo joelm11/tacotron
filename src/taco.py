@@ -35,11 +35,10 @@ class Tts(keras.Model):
 
         enc_seq = self.encoder(text, training=training)  # (B, T_text, 256)
 
-        pred_mels_grouped, _ = self.decoder(dec_input, enc_seq, None)  # (B, T//r, r * n_mels)
-
+        pred_mels_grouped, _ = self.decoder(dec_input, enc_seq, None, training=training)
         # Reshape predictions back to full time resolution for loss
         pred_mels = keras.ops.reshape(pred_mels_grouped, (batch_size, n_frames, n_mels))
 
-        pred_spectra = self.post_net(pred_mels_grouped)  # (B, T, n_freq)
+        pred_spectra = self.post_net(pred_mels_grouped, training=training)
 
         return {"pred_mels": pred_mels, "pred_spectra": pred_spectra}
