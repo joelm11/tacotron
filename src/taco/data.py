@@ -37,7 +37,7 @@ def download_extract_dataset(output_dir: Path):
 
 
 def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def get_dataset_dir(project_root: Path) -> Path:

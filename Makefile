@@ -4,7 +4,7 @@
 UV := uv
 PYTHON := $(UV) run python
 
-SRC_DIR := src
+SRC_DIR := src/taco
 
 # Ensure Keras uses the TensorFlow backend (required for GPU support)
 export KERAS_BACKEND := tensorflow

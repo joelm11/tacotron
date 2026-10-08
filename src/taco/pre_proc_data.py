@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
 
-from data import (
+from taco.data import (
     get_feat_dir,
     get_metadata_path,
     get_project_root,
@@ -19,7 +19,6 @@ from data import (
     setup_dir_structure,
 )
 
-# Audio constants matching reference Hyperparams
 SR = 22050
 N_FFT = 2048
 FRAME_SHIFT = 0.0125  # seconds
