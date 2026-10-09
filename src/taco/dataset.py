@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 
 from taco.data import get_metadata_path, get_project_root, get_wav_root
 from taco.hparams import DataConfig
+from taco.pre_proc_data import compute_mel_spectrogram
 
 
 class TTSDataset(Dataset):
@@ -26,8 +27,9 @@ class TTSDataset(Dataset):
 
         audio_file = Path(row[0]).with_suffix(".wav")
         audio_path = self.audio_dir / audio_file
-        audio, _ = librosa.load(audio_path, sr=DataConfig.sr)
-        return text, audio
+        audio, sr = librosa.load(audio_path, sr=DataConfig.sr)
+        mels = compute_mel_spectrogram(audio, sr)
+        return text, mels
 
 
 class RandomBucketSampler(Sampler):
@@ -55,20 +57,20 @@ class RandomBucketSampler(Sampler):
 
 
 def collate_fn(batch):
-    texts, audios = zip(*batch, strict=True)
+    texts, mels = zip(*batch, strict=True)
 
     text_lengths = torch.tensor([len(t) for t in texts])
-    audio_lengths = torch.tensor([len(a) for a in audios])
+    mel_lengths = torch.tensor([len(a) for a in mels])
 
     # Encode text chars -> int ids, then pad
     text_tensors = [torch.tensor([ord(c) for c in t], dtype=torch.long) for t in texts]
     texts = pad_sequence(text_tensors, batch_first=True, padding_value=0)
 
-    # Convert numpy audio arrays to tensors, then pad
-    audio_tensors = [torch.from_numpy(a) for a in audios]
-    audios = pad_sequence(audio_tensors, batch_first=True)
+    # Convert numpy mel arrays to tensors, then pad
+    mel_tensors = [torch.from_numpy(a) for a in mels]
+    mels = pad_sequence(mel_tensors, batch_first=True)
 
-    return texts, audios, text_lengths, audio_lengths
+    return texts, mels, text_lengths, mel_lengths
 
 
 def make_data_loader():
