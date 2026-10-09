@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from taco.decoder import Attention
 from taco.encoder import Encoder
 from taco.hparams import DataConfig, ModelConfig
 
@@ -39,9 +40,23 @@ def train(model):
     return
 
 
+def test_attn():
+    batch_size = 5
+    key_d = 256
+    q_d = 1024
+    attn = Attention(q_d, key_d)
+
+    keys = torch.randn(batch_size, 100, key_d)
+    q = torch.randn(batch_size, 1024)
+    w_prev = torch.randn(batch_size, 100)
+
+    c, w = attn(q, keys, w_prev)
+
+
 def main():
-    model = TTSModel(DataConfig.n_vocab)
-    train(model)
+    # model = TTSModel(DataConfig.n_vocab)
+    # train(model)
+    test_attn()
 
 
 if __name__ == "__main__":
