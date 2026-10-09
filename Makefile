@@ -25,6 +25,9 @@ install: ## Install dependencies and the project in the uv venv
 data: ## Download and prepare the dataset
 	$(PYTHON) $(SRC_DIR)/data.py
 
+dataset: ## Download and prepare the dataset
+	$(PYTHON) $(SRC_DIR)/dataset.py
+
 preproc: ## Preprocess input text
 	$(PYTHON) $(SRC_DIR)/pre_proc_data.py
 

@@ -15,3 +15,8 @@ class DataConfig:
 @dataclass
 class ModelConfig:
     embedding_d = 512
+
+
+@dataclass
+class TrainingConfig:
+    batch_size = 32

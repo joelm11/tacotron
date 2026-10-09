@@ -52,6 +52,10 @@ def get_wav_path(project_root: Path, label: str) -> Path:
     return get_dataset_dir(project_root) / "wavs" / f"{label}.wav"
 
 
+def get_wav_root(project_root: Path) -> Path:
+    return get_dataset_dir(project_root) / "wavs"
+
+
 def get_feat_dir(project_root: Path) -> Path:
     return project_root / "data" / "features"
 
