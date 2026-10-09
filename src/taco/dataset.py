@@ -14,7 +14,7 @@ from taco.hparams import DataConfig
 
 class TTSDataset(Dataset):
     def __init__(self, md_file: Path, audio_dir: Path):
-        self.labels_and_text = pd.read_csv(md_file, sep="|")
+        self.labels_and_text = pd.read_csv(md_file, sep="|", header=None)
         self.audio_dir = audio_dir
 
     def __len__(self):
@@ -26,7 +26,7 @@ class TTSDataset(Dataset):
 
         audio_file = Path(row[0]).with_suffix(".wav")
         audio_path = self.audio_dir / audio_file
-        audio = librosa.load(audio_path, sr=DataConfig.sr)
+        audio, _ = librosa.load(audio_path, sr=DataConfig.sr)
         return text, audio
 
 
@@ -57,11 +57,16 @@ class RandomBucketSampler(Sampler):
 def collate_fn(batch):
     texts, audios = zip(*batch, strict=True)
 
-    text_lengths = torch.tensor([len(x) for x in texts])
-    audio_lengths = torch.tensor([len(x) for x in audios])
+    text_lengths = torch.tensor([len(t) for t in texts])
+    audio_lengths = torch.tensor([len(a) for a in audios])
 
-    texts = pad_sequence(texts, batch_first=True, padding_value=0)
-    audios = pad_sequence(audios, batch_first=True)
+    # Encode text chars -> int ids, then pad
+    text_tensors = [torch.tensor([ord(c) for c in t], dtype=torch.long) for t in texts]
+    texts = pad_sequence(text_tensors, batch_first=True, padding_value=0)
+
+    # Convert numpy audio arrays to tensors, then pad
+    audio_tensors = [torch.from_numpy(a) for a in audios]
+    audios = pad_sequence(audio_tensors, batch_first=True)
 
     return texts, audios, text_lengths, audio_lengths
 
