@@ -21,14 +21,12 @@ def train(model):
 
     for step in range(10):
         # Fake input and target batch
-        x = torch.randn(1, DataConfig.max_text_len, DataConfig.n_vocab)
+        x = torch.randint(0, DataConfig.n_vocab, (1, DataConfig.max_text_len))
         y = torch.randn(1, DataConfig.max_text_len, ModelConfig.embedding_d)
 
         # Forward
         embedded_seq = model(x)
 
-        # CrossEntropyLoss expects:
-        # logits: (N, C), targets: (N,)
         loss = criterion(embedded_seq, y)
 
         # Backward + parameter update

@@ -24,8 +24,9 @@ class Encoder(nn.Module):
         self.lstm = nn.LSTM(units, units // 2, bidirectional=True, batch_first=True)
 
     def forward(self, x):
-        # x: (B, Tt, 128)
         embeddings = self.embeddings(x)
+        embeddings = embeddings.permute(0, 2, 1)
         outputs = self.convs(embeddings)
+        outputs = outputs.permute(0, 2, 1)
         outputs, _ = self.lstm(outputs)
         return outputs
