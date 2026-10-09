@@ -8,16 +8,17 @@ class Encoder(nn.Module):
         super().__init__()
         units = 512
         embed_dim = ModelConfig.embedding_d
+        filter_sz = ModelConfig.encoder_conv_filter_sz
 
         self.embeddings = nn.Embedding(vocab_size, embed_dim, 0)
         self.convs = nn.Sequential(
-            nn.Conv1d(embed_dim, units, kernel_size=5, padding=2),
+            nn.Conv1d(embed_dim, units, kernel_size=filter_sz, padding=2),
             nn.BatchNorm1d(units),
             nn.ReLU(),
-            nn.Conv1d(units, units, kernel_size=5, padding=2),
+            nn.Conv1d(units, units, kernel_size=filter_sz, padding=2),
             nn.BatchNorm1d(units),
             nn.ReLU(),
-            nn.Conv1d(units, units, kernel_size=5, padding=2),
+            nn.Conv1d(units, units, kernel_size=filter_sz, padding=2),
             nn.BatchNorm1d(units),
             nn.ReLU(),
         )

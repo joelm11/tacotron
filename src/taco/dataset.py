@@ -82,11 +82,3 @@ def make_data_loader():
     loader = DataLoader(dataset, batch_sampler=sampler, collate_fn=collate_fn)
 
     return loader
-
-
-def main():
-    loader = make_data_loader()
-
-
-if __name__ == "__main__":
-    main()

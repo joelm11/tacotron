@@ -25,9 +25,9 @@ def train(model):
         y = torch.randn(1, DataConfig.max_text_len, ModelConfig.embedding_d)
 
         # Forward
-        embedded_seq = model(x)
+        encoded_seq = model(x)
 
-        loss = criterion(embedded_seq, y)
+        loss = criterion(encoded_seq, y)
 
         # Backward + parameter update
         optimizer.zero_grad()

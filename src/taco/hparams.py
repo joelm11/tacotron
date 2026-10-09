@@ -19,6 +19,10 @@ class DataConfig:
 @dataclass
 class ModelConfig:
     embedding_d = 512
+    encoder_conv_filter_sz = 5
+    decoder_conv_filter_sz = 31
+    loc_feat_d = 32
+    prenet_d = 256
 
 
 @dataclass
