@@ -10,10 +10,15 @@ class TTSModel(nn.Module):
     def __init__(self, vocab_size=128):
         super().__init__()
         self.encoder = Encoder(vocab_size)
+        self.decoder = Decoder(
+            ModelConfig.prenet_d, ModelConfig.attn_d, ModelConfig.lstm_d, DataConfig.n_mels
+        )
+        self.post_net = None
 
     def forward(self, x):
         x = self.encoder(x)
-        return x
+        y1, y2 = self.decoder(x)
+        return y1, y2
 
 
 def train(model):
