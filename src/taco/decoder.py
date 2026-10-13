@@ -22,7 +22,7 @@ class Attention(nn.Module):
         # k: (B, Tt, k_dim)
         # p_w: (B, Tt, 1)
 
-        loc_feats = self.loc_conv(prev_weights.unsqueeze(1))
+        loc_feats = self.loc_conv(prev_weights.transpose(1, 2))
 
         q = self.w_q(q).unsqueeze(1)  # (B, 1, U)
         k = self.w_k(k)  # (B, Tt, U)
@@ -48,7 +48,7 @@ class Decoder(nn.Module):
             nn.ReLU(),
         )
         self.rnn = nn.LSTM(prenet_dim + attn_dim, lstm_dim, num_layers=2, batch_first=True)
-        self.attn = Attention(lstm_dim, Encoder.OUT_D)
+        self.attn = Attention(query_dim=lstm_dim, key_dim=Encoder.OUT_D)
         self.proj_mels = nn.Linear(lstm_dim + attn_dim, n_mels)
         self.proj_stop = nn.Linear(lstm_dim + attn_dim, 1)
 
@@ -69,7 +69,7 @@ class Decoder(nn.Module):
             x = self.prenet(prev_frame)
             x = torch.cat((x, ctx_prev), -1)
 
-            q, (h_prev, w_prev) = self.rnn(x, (h_prev, c_prev))
+            q, (h_prev, c_prev) = self.rnn(x, (h_prev, c_prev))
             c, w = self.attn(q, enc_seq, w_prev)
             w_prev += w
             qc = torch.cat((q, c), -1)
@@ -80,7 +80,7 @@ class Decoder(nn.Module):
             pred_frames.append(pred_frame)
             pred_stops.append(pred_stop)
 
-            if target_mels:
+            if target_mels is not None:
                 prev_frame = target_mels[:, t]
             else:
                 prev_frame = pred_frame

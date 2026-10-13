@@ -44,7 +44,7 @@ def test_attn():
     batch_size, pn_dim, attn_dim, lstm_dim, n_mels = [16, 256, 128, 1024, 80]
 
     dec = Decoder(pn_dim, attn_dim, lstm_dim, n_mels)
-    enc_seq = torch.randn(batch_size, 100, 512)
+    enc_seq = torch.randn(batch_size, 100, 1024)
     target_seq = torch.randn(batch_size, 200, n_mels)
     prev_frame = torch.zeros((batch_size, n_mels))
 
