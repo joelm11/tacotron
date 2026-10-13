@@ -27,6 +27,9 @@ class ModelConfig:
     attn_d = 128
     decoder_conv_filter_sz = 31
     loc_feat_d = 32
+    # Postnet
+    postnet_conv_n_ch = 512
+    postnet_conv_filter_sz = 5
 
 
 @dataclass

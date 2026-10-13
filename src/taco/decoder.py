@@ -2,19 +2,20 @@ import torch
 import torch.nn as nn
 
 from taco.encoder import Encoder
-from taco.hparams import ModelConfig
+from taco.hparams import DataConfig, ModelConfig
 
 
 class Attention(nn.Module):
     def __init__(self, query_dim, key_dim, attn_dim=128):
         super().__init__()
+
         self.units = attn_dim
         location_feat_d = ModelConfig.loc_feat_d
         filter_sz = ModelConfig.decoder_conv_filter_sz
         self.w_q = nn.Linear(query_dim, attn_dim, bias=False)
-        self.w_k = nn.Linear(key_dim, attn_dim)
-        self.w_l = nn.Linear(location_feat_d, attn_dim)
-        self.w_v = nn.Linear(attn_dim, 1)
+        self.w_k = nn.Linear(key_dim, attn_dim, bias=False)
+        self.w_l = nn.Linear(location_feat_d, attn_dim, bias=False)
+        self.w_v = nn.Linear(attn_dim, 1, bias=False)
         self.loc_conv = nn.Conv1d(1, location_feat_d, kernel_size=filter_sz, padding=15)
 
     def forward(self, q, k, prev_weights):
@@ -39,6 +40,7 @@ class Attention(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, prenet_dim, attn_dim, lstm_dim, n_mels):
         super().__init__()
+
         self.lstm_dim = lstm_dim
         self.attn_dim = attn_dim
         self.prenet = nn.Sequential(
@@ -91,9 +93,37 @@ class Decoder(nn.Module):
 
 
 class PostNet(nn.Module):
-    def __init__(self, query_dim, key_dim, attn_dim=128):
+    def __init__(self):
         super().__init__()
 
+        n_mels = DataConfig.n_mels
+        channels = ModelConfig.postnet_conv_n_ch
+        k_sz = ModelConfig.postnet_conv_filter_sz
 
-def forward(self, pred):
-    pass
+        self.convs = nn.Sequential(
+            nn.Conv1d(n_mels, channels, k_sz, padding="same"),
+            nn.BatchNorm1d(channels),
+            nn.Tanh(),
+            nn.Conv1d(channels, channels, k_sz, padding="same"),
+            nn.BatchNorm1d(channels),
+            nn.Tanh(),
+            nn.Conv1d(channels, channels, k_sz, padding="same"),
+            nn.BatchNorm1d(channels),
+            nn.Tanh(),
+            nn.Conv1d(channels, channels, k_sz, padding="same"),
+            nn.BatchNorm1d(channels),
+            nn.Tanh(),
+            nn.Conv1d(channels, channels, k_sz, padding="same"),
+            nn.BatchNorm1d(channels),
+        )
+        self.proj = nn.Linear(channels, n_mels, bias=False)
+
+    def forward(self, pred_mels):
+        # pred_mels: (B, N, T)
+
+        residuals = self.convs(pred_mels)
+        residuals = self.proj(residuals.transpose(1, 2))
+        # residuals = residuals.transpose(1, 2)
+        # print("PN Res shape:", residuals.shape)
+        # print("PN Mels shape:", pred_mels.shape)
+        return pred_mels + residuals.transpose(1, 2)
