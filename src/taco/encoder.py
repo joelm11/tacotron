@@ -4,9 +4,12 @@ from taco.hparams import ModelConfig
 
 
 class Encoder(nn.Module):
+    UNITS = ModelConfig.embedding_d
+    OUT_D = 2 * UNITS
+
     def __init__(self, vocab_size):
         super().__init__()
-        units = 512
+        units = self.UNITS
         embed_dim = ModelConfig.embedding_d
         filter_sz = ModelConfig.encoder_conv_filter_sz
 

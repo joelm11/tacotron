@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from taco.decoder import Attention
+from taco.decoder import Decoder
 from taco.encoder import Encoder
 from taco.hparams import DataConfig, ModelConfig
 
@@ -41,16 +41,14 @@ def train(model):
 
 
 def test_attn():
-    batch_size = 5
-    key_d = 256
-    q_d = 1024
-    attn = Attention(q_d, key_d)
+    batch_size, pn_dim, attn_dim, lstm_dim, n_mels = [16, 256, 128, 1024, 80]
 
-    keys = torch.randn(batch_size, 100, key_d)
-    q = torch.randn(batch_size, 1024)
-    w_prev = torch.randn(batch_size, 100)
+    dec = Decoder(pn_dim, attn_dim, lstm_dim, n_mels)
+    enc_seq = torch.randn(batch_size, 100, 512)
+    target_seq = torch.randn(batch_size, 200, n_mels)
+    prev_frame = torch.zeros((batch_size, n_mels))
 
-    c, w = attn(q, keys, w_prev)
+    dec.forward(prev_frame, enc_seq, target_seq)
 
 
 def main():
