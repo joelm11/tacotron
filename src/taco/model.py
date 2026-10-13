@@ -6,6 +6,7 @@ from taco.dataset import TTSDataset, collate_fn
 from taco.decoder import Decoder, PostNet
 from taco.encoder import Encoder
 from taco.hparams import DataConfig, ModelConfig
+from taco.utils import get_logs_dir, plot_attention
 
 
 class TTSModel(nn.Module):
@@ -25,11 +26,15 @@ class TTSModel(nn.Module):
 
         batch_size = target_mels.size(0)
         prev_frame = target_mels.new_zeros(batch_size, DataConfig.n_mels)
-        pred_mels, pred_stops = self.decoder(prev_frame, enc_seq, target_mels)
+        pred_mels, pred_stops, attn_weights = self.decoder(prev_frame, enc_seq, target_mels)
         pred_mels_wres = self.post_net(pred_mels)
 
-        # Decoder returns (B, n_mels, T) / (B, 1, T); put time first for the loss.
-        return pred_mels.transpose(1, 2), pred_mels_wres.transpose(1, 2), pred_stops.squeeze(1)
+        return (
+            pred_mels.transpose(1, 2),
+            pred_mels_wres.transpose(1, 2),
+            pred_stops.squeeze(1),
+            attn_weights,
+        )
 
 
 def pick_short_indices(dataset, n):
@@ -47,7 +52,7 @@ def build_overfit_batch(n=2):
     return collate_fn(batch)
 
 
-def train(model, batch, device, steps=1500, lr=1e-3, log_every=50):
+def train(model, batch, device, steps=2000, lr=1e-3, log_every=500):
     texts, mels, _, mel_lengths = batch
     texts = texts.to(device)
     mels = mels.to(device)
@@ -59,15 +64,15 @@ def train(model, batch, device, steps=1500, lr=1e-3, log_every=50):
         stop_targets[i, mel_lengths[i] - 1] = 1.0
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    l2 = nn.MSELoss()
+    mse = nn.MSELoss()
     bce = nn.BCEWithLogitsLoss()
 
     model.train()
     for step in range(steps):
-        pred_mels, pred_mels_wres, pred_stops = model(texts, mels)
+        pred_mels, pred_mels_wres, pred_stops, attn_weights = model(texts, mels)
 
-        loss_mel = l2(pred_mels, mels)
-        loss_res_mel = l2(pred_mels_wres, mels)
+        loss_mel = mse(pred_mels, mels)
+        loss_res_mel = mse(pred_mels_wres, mels)
         loss_stop = bce(pred_stops, stop_targets)
         loss = loss_mel + loss_stop + loss_res_mel
 
@@ -80,6 +85,11 @@ def train(model, batch, device, steps=1500, lr=1e-3, log_every=50):
             print(
                 f"step {step:5d} | mel {loss_mel.item():.4f} | res_mel {loss_res_mel.item():.4f} "
                 f"| stop {loss_stop.item():.4f} | total {loss.item():.4f}"
+            )
+            plot_attention(
+                attn_weights,
+                get_logs_dir() / f"attention_{step:05d}.png",
+                title=f"Attention at step {step}",
             )
     return model
 

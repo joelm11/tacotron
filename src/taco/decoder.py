@@ -5,6 +5,8 @@ from taco.encoder import Encoder
 from taco.hparams import DataConfig, ModelConfig
 
 
+# TODO Add cumulative attention weights
+# TODO Add masking
 class Attention(nn.Module):
     def __init__(self, query_dim, key_dim, attn_dim=128):
         super().__init__()
@@ -69,6 +71,7 @@ class Decoder(nn.Module):
 
         pred_frames = []
         pred_stops = []
+        attn_weights = []
         for t in range(T):
             x = self.prenet(prev_frame)
             x = torch.cat((x, ctx_prev), -1)
@@ -83,13 +86,19 @@ class Decoder(nn.Module):
 
             pred_frames.append(pred_frame)
             pred_stops.append(pred_stop)
+            attn_weights.append(w)
 
             if target_mels is not None:
                 prev_frame = target_mels[:, t]
             else:
                 prev_frame = pred_frame
 
-        return torch.stack(pred_frames, dim=-1), torch.stack(pred_stops, dim=-1)
+        # attn_weights: (B, T, S) alignment maps accumulated over the decoder steps.
+        return (
+            torch.stack(pred_frames, dim=-1),
+            torch.stack(pred_stops, dim=-1),
+            torch.stack(attn_weights, dim=1).squeeze(-1),
+        )
 
 
 class PostNet(nn.Module):
@@ -123,7 +132,4 @@ class PostNet(nn.Module):
 
         residuals = self.convs(pred_mels)
         residuals = self.proj(residuals.transpose(1, 2))
-        # residuals = residuals.transpose(1, 2)
-        # print("PN Res shape:", residuals.shape)
-        # print("PN Mels shape:", pred_mels.shape)
         return pred_mels + residuals.transpose(1, 2)
