@@ -23,7 +23,7 @@ class TTSDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.labels_and_text.iloc[idx]
-        text = row[2] if row[2] else row[1]
+        text = row[2] if pd.notna(row[2]) and row[2] else row[1]
 
         audio_file = Path(row[0]).with_suffix(".wav")
         audio_path = self.audio_dir / audio_file
@@ -60,14 +60,15 @@ def collate_fn(batch):
     texts, mels = zip(*batch, strict=True)
 
     text_lengths = torch.tensor([len(t) for t in texts])
-    mel_lengths = torch.tensor([len(a) for a in mels])
+    # Mel arrays are (n_mels, n_frames); length is the frame (time) dimension.
+    mel_lengths = torch.tensor([a.shape[-1] for a in mels])
 
     # Encode text chars -> int ids, then pad
     text_tensors = [torch.tensor([ord(c) for c in t], dtype=torch.long) for t in texts]
     texts = pad_sequence(text_tensors, batch_first=True, padding_value=0)
 
-    # Convert numpy mel arrays to tensors, then pad
-    mel_tensors = [torch.from_numpy(a) for a in mels]
+    # Transpose to (n_frames, n_mels) so pad_sequence pads time and matches the decoder.
+    mel_tensors = [torch.from_numpy(a).transpose(0, 1) for a in mels]
     mels = pad_sequence(mel_tensors, batch_first=True)
 
     return texts, mels, text_lengths, mel_lengths

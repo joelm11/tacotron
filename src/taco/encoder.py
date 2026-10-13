@@ -5,7 +5,7 @@ from taco.hparams import ModelConfig
 
 class Encoder(nn.Module):
     UNITS = ModelConfig.embedding_d
-    OUT_D = 2 * UNITS
+    OUT_D = UNITS
 
     def __init__(self, vocab_size):
         super().__init__()

@@ -59,9 +59,11 @@ class Decoder(nn.Module):
         B, S, E = enc_seq.shape
         B, T, _ = target_mels.shape
 
-        ctx_prev = torch.zeros((B, self.attn_dim))
-        h_prev = c_prev = torch.zeros((2, self.lstm_dim))
-        w_prev = torch.zeros((B, S, 1))
+        device = enc_seq.device
+        ctx_prev = torch.zeros((B, self.attn_dim), device=device)
+        h_prev = torch.zeros((2, self.lstm_dim), device=device)
+        c_prev = torch.zeros((2, self.lstm_dim), device=device)
+        w_prev = torch.zeros((B, S, 1), device=device)
 
         pred_frames = []
         pred_stops = []
@@ -71,7 +73,7 @@ class Decoder(nn.Module):
 
             q, (h_prev, c_prev) = self.rnn(x, (h_prev, c_prev))
             c, w = self.attn(q, enc_seq, w_prev)
-            w_prev += w
+            w_prev = w_prev + w
             qc = torch.cat((q, c), -1)
 
             pred_frame = self.proj_mels(qc)
@@ -88,5 +90,10 @@ class Decoder(nn.Module):
         return torch.stack(pred_frames, dim=-1), torch.stack(pred_stops, dim=-1)
 
 
-# Decoder versus decoder cell implementation
-# We're giving the whole encoded sequence to the decoder put the loop in the decoder
+class PostNet(nn.Module):
+    def __init__(self, query_dim, key_dim, attn_dim=128):
+        super().__init__()
+
+
+def forward(self, pred):
+    pass
