@@ -19,14 +19,16 @@ class TTSModel(nn.Module):
         self.post_net = PostNet()
 
     def forward(self, text, text_lengths, target_mels=None):
-        enc_seq = self.encoder(text, text_lengths)
+        enc_seq, seq_masks = self.encoder(text, text_lengths)
         if target_mels is None:
             # Autoregressive inference is not implemented in the decoder yet.
-            return enc_seq
+            return enc_seq, seq_masks
 
         batch_size = target_mels.size(0)
         prev_frame = target_mels.new_zeros(batch_size, DataConfig.n_mels)
-        pred_mels, pred_stops, attn_weights = self.decoder(prev_frame, enc_seq, target_mels)
+        pred_mels, pred_stops, attn_weights = self.decoder(
+            prev_frame, enc_seq, target_mels, seq_masks
+        )
         pred_mels_wres = self.post_net(pred_mels)
 
         return (

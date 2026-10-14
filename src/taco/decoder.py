@@ -64,7 +64,7 @@ class Decoder(nn.Module):
         self.proj_mels = nn.Linear(lstm_dim + Encoder.OUT_D, n_mels)
         self.proj_stop = nn.Linear(lstm_dim + Encoder.OUT_D, 1)
 
-    def forward(self, prev_frame, enc_seq, target_mels=None):
+    def forward(self, prev_frame, enc_seq, target_mels=None, seq_masks=None):
         if target_mels is None:
             return  # Inference TBI
 
@@ -86,7 +86,7 @@ class Decoder(nn.Module):
             x = torch.cat((x, ctx_prev), -1)
 
             q, (h_prev, c_prev) = self.rnn(x, (h_prev, c_prev))
-            c, w_prev, w_cum = self.attn(q, enc_seq, w_prev, w_cum)
+            c, w_prev, w_cum = self.attn(q, enc_seq, w_prev, w_cum, mask=seq_masks)
             qc = torch.cat((q, c), -1)
 
             pred_frame = self.proj_mels(qc)
