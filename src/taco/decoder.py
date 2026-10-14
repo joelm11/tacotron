@@ -69,8 +69,8 @@ class Decoder(nn.Module):
         B, T, _ = target_mels.shape
 
         device = enc_seq.device
-        h_prev = torch.zeros((2, self.lstm_dim), device=device)
-        c_prev = torch.zeros((2, self.lstm_dim), device=device)
+        h_prev = torch.zeros((2, B, self.lstm_dim), device=device)
+        c_prev = torch.zeros((2, B, self.lstm_dim), device=device)
         ctx_prev = torch.zeros((B, E), device=device)
         w_prev = torch.zeros((B, S, 1), device=device)
         w_cum = torch.zeros((B, S, 1), device=device)
@@ -82,7 +82,8 @@ class Decoder(nn.Module):
             x = self.prenet(prev_frame)
             x = torch.cat((x, ctx_prev), -1)
 
-            q, (h_prev, c_prev) = self.rnn(x, (h_prev, c_prev))
+            q, (h_prev, c_prev) = self.rnn(x.unsqueeze(1), (h_prev, c_prev))
+            q = q.squeeze(1)
             ctx_prev, w_prev, w_cum = self.attn(q, enc_seq, w_prev, w_cum, mask=seq_masks)
             qc = torch.cat((q, ctx_prev), -1)
 
