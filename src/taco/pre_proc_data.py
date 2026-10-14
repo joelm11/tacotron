@@ -16,6 +16,8 @@ def compute_mel_spectrogram(audio, sr):
     hop_length = int(DataConfig.frame_hop_ms * 1e-3 * sr)
     n_fft = DataConfig.n_fft
 
+    audio, _ = librosa.effects.trim(audio)
+
     stft = librosa.stft(
         y=audio,
         n_fft=n_fft,
