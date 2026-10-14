@@ -5,7 +5,6 @@ from taco.encoder import Encoder
 from taco.hparams import DataConfig, ModelConfig
 
 
-# TODO Add cumulative attention weights
 # TODO Add masking
 class Attention(nn.Module):
     def __init__(self, query_dim, key_dim, attn_dim=128):
@@ -18,25 +17,28 @@ class Attention(nn.Module):
         self.w_k = nn.Linear(key_dim, attn_dim, bias=False)
         self.w_l = nn.Linear(location_feat_d, attn_dim, bias=False)
         self.w_v = nn.Linear(attn_dim, 1, bias=False)
-        self.loc_conv = nn.Conv1d(1, location_feat_d, kernel_size=filter_sz, padding=15)
+        self.loc_conv = nn.Conv1d(2, location_feat_d, kernel_size=filter_sz, padding="same")
 
-    def forward(self, q, k, prev_weights):
+    def forward(self, query, keys, weights_prev, weights_cum):
         # q: (B, q_dim)
-        # k: (B, Tt, k_dim)
-        # p_w: (B, Tt, 1)
+        # k: (B, S, k_dim)
+        # p_w: (B, S, 1)
 
-        loc_feats = self.loc_conv(prev_weights.transpose(1, 2))
+        loc_feats = torch.cat(
+            (weights_cum.transpose(1, 2), weights_prev.transpose(1, 2)), 1
+        )  # (B, 2, S)
+        loc_feats = self.loc_conv(loc_feats)  # (B, Conv, S)
 
-        q = self.w_q(q).unsqueeze(1)  # (B, 1, U)
-        k = self.w_k(k)  # (B, Tt, U)
-        loc_feats = self.w_l(loc_feats.transpose(1, 2))  # (B, 1, U)
+        q = self.w_q(query).unsqueeze(1)  # (B, 1, U)
+        k = self.w_k(keys)  # (B, S, U)
+        loc_feats = self.w_l(loc_feats.transpose(1, 2))  # (B, S, U)
 
-        score = self.w_v(torch.tanh(q + k + loc_feats))  # (B, Tt, 1)
+        score = self.w_v(torch.tanh(q + k + loc_feats))  # (B, S, 1)
         weights = torch.softmax(score, dim=1)
 
-        c = torch.einsum("bsd,bsq->bd", k, weights)
+        c = torch.einsum("bsd,bsq->bd", keys, weights)
 
-        return c, weights
+        return c, weights, weights_cum + weights
 
 
 class Decoder(nn.Module):
@@ -53,8 +55,8 @@ class Decoder(nn.Module):
         )
         self.rnn = nn.LSTM(prenet_dim + attn_dim, lstm_dim, num_layers=2, batch_first=True)
         self.attn = Attention(query_dim=lstm_dim, key_dim=Encoder.OUT_D)
-        self.proj_mels = nn.Linear(lstm_dim + attn_dim, n_mels)
-        self.proj_stop = nn.Linear(lstm_dim + attn_dim, 1)
+        self.proj_mels = nn.Linear(lstm_dim + Encoder.OUT_D, n_mels)
+        self.proj_stop = nn.Linear(lstm_dim + Encoder.OUT_D, 1)
 
     def forward(self, prev_frame, enc_seq, target_mels=None):
         if target_mels is None:
@@ -68,6 +70,7 @@ class Decoder(nn.Module):
         h_prev = torch.zeros((2, self.lstm_dim), device=device)
         c_prev = torch.zeros((2, self.lstm_dim), device=device)
         w_prev = torch.zeros((B, S, 1), device=device)
+        w_cum = torch.zeros((B, S, 1), device=device)
 
         pred_frames = []
         pred_stops = []
@@ -77,8 +80,7 @@ class Decoder(nn.Module):
             x = torch.cat((x, ctx_prev), -1)
 
             q, (h_prev, c_prev) = self.rnn(x, (h_prev, c_prev))
-            c, w = self.attn(q, enc_seq, w_prev)
-            w_prev = w_prev + w
+            c, w_prev, w_cum = self.attn(q, enc_seq, w_prev, w_cum)
             qc = torch.cat((q, c), -1)
 
             pred_frame = self.proj_mels(qc)
@@ -86,7 +88,7 @@ class Decoder(nn.Module):
 
             pred_frames.append(pred_frame)
             pred_stops.append(pred_stop)
-            attn_weights.append(w)
+            attn_weights.append(w_prev)
 
             if target_mels is not None:
                 prev_frame = target_mels[:, t]
