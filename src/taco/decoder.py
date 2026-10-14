@@ -5,9 +5,6 @@ from taco.encoder import Encoder
 from taco.hparams import DataConfig, ModelConfig
 
 
-# TODO Add masking
-# Encoder gives us the true length of the sequence.
-#
 class Attention(nn.Module):
     def __init__(self, query_dim, key_dim, attn_dim=128):
         super().__init__()
@@ -59,7 +56,7 @@ class Decoder(nn.Module):
             nn.Linear(prenet_dim, prenet_dim),
             nn.ReLU(),
         )
-        self.rnn = nn.LSTM(prenet_dim + attn_dim, lstm_dim, num_layers=2, batch_first=True)
+        self.rnn = nn.LSTM(prenet_dim + Encoder.OUT_D, lstm_dim, num_layers=2, batch_first=True)
         self.attn = Attention(query_dim=lstm_dim, key_dim=Encoder.OUT_D)
         self.proj_mels = nn.Linear(lstm_dim + Encoder.OUT_D, n_mels)
         self.proj_stop = nn.Linear(lstm_dim + Encoder.OUT_D, 1)
@@ -72,9 +69,9 @@ class Decoder(nn.Module):
         B, T, _ = target_mels.shape
 
         device = enc_seq.device
-        ctx_prev = torch.zeros((B, self.attn_dim), device=device)
         h_prev = torch.zeros((2, self.lstm_dim), device=device)
         c_prev = torch.zeros((2, self.lstm_dim), device=device)
+        ctx_prev = torch.zeros((B, E), device=device)
         w_prev = torch.zeros((B, S, 1), device=device)
         w_cum = torch.zeros((B, S, 1), device=device)
 
@@ -86,8 +83,8 @@ class Decoder(nn.Module):
             x = torch.cat((x, ctx_prev), -1)
 
             q, (h_prev, c_prev) = self.rnn(x, (h_prev, c_prev))
-            c, w_prev, w_cum = self.attn(q, enc_seq, w_prev, w_cum, mask=seq_masks)
-            qc = torch.cat((q, c), -1)
+            ctx_prev, w_prev, w_cum = self.attn(q, enc_seq, w_prev, w_cum, mask=seq_masks)
+            qc = torch.cat((q, ctx_prev), -1)
 
             pred_frame = self.proj_mels(qc)
             pred_stop = self.proj_stop(qc)
