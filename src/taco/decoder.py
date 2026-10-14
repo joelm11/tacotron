@@ -16,7 +16,9 @@ class Attention(nn.Module):
         self.w_k = nn.Linear(key_dim, attn_dim, bias=False)
         self.w_l = nn.Linear(location_feat_d, attn_dim, bias=False)
         self.w_v = nn.Linear(attn_dim, 1, bias=False)
-        self.loc_conv = nn.Conv1d(2, location_feat_d, kernel_size=filter_sz, padding="same")
+        self.loc_conv = nn.Conv1d(
+            2, location_feat_d, kernel_size=filter_sz, padding="same", bias=False
+        )
 
     def forward(self, query, keys, weights_prev, weights_cum, mask=None):
         # q: (B, q_dim)
@@ -53,8 +55,10 @@ class Decoder(nn.Module):
         self.prenet = nn.Sequential(
             nn.Linear(n_mels, prenet_dim),
             nn.ReLU(),
+            nn.Dropout(),
             nn.Linear(prenet_dim, prenet_dim),
             nn.ReLU(),
+            nn.Dropout(),
         )
         self.rnn = nn.LSTM(prenet_dim + Encoder.OUT_D, lstm_dim, num_layers=2, batch_first=True)
         self.attn = Attention(query_dim=lstm_dim, key_dim=Encoder.OUT_D)
@@ -82,6 +86,7 @@ class Decoder(nn.Module):
             x = self.prenet(prev_frame)
             x = torch.cat((x, ctx_prev), -1)
 
+            self.rnn.flatten_parameters()
             q, (h_prev, c_prev) = self.rnn(x.unsqueeze(1), (h_prev, c_prev))
             q = q.squeeze(1)
             ctx_prev, w_prev, w_cum = self.attn(q, enc_seq, w_prev, w_cum, mask=seq_masks)
