@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from taco.hparams import ModelConfig
 
@@ -16,13 +17,13 @@ class Encoder(nn.Module):
 
         self.embeddings = nn.Embedding(vocab_size, embed_dim, 0)
         self.convs = nn.Sequential(
-            nn.Conv1d(embed_dim, units, kernel_size=filter_sz, padding=2),
+            nn.Conv1d(embed_dim, units, kernel_size=filter_sz, padding="same"),
             nn.BatchNorm1d(units),
             nn.ReLU(),
-            nn.Conv1d(units, units, kernel_size=filter_sz, padding=2),
+            nn.Conv1d(units, units, kernel_size=filter_sz, padding="same"),
             nn.BatchNorm1d(units),
             nn.ReLU(),
-            nn.Conv1d(units, units, kernel_size=filter_sz, padding=2),
+            nn.Conv1d(units, units, kernel_size=filter_sz, padding="same"),
             nn.BatchNorm1d(units),
             nn.ReLU(),
         )
@@ -30,11 +31,6 @@ class Encoder(nn.Module):
 
     @staticmethod
     def make_seq_mask(text, text_lengths):
-        """Boolean key mask for the padded sequence.
-
-        Returns a (B, S, 1) tensor that is True at padded positions so it can be
-        passed directly to ``Tensor.masked_fill`` in the attention module.
-        """
         max_len = text.shape[1]
         # (B, S) -> True where position >= original length
         positions = torch.arange(max_len, device=text.device).unsqueeze(0)
@@ -46,7 +42,19 @@ class Encoder(nn.Module):
         embeddings = embeddings.permute(0, 2, 1)
         encoded_seq = self.convs(embeddings)
         encoded_seq = encoded_seq.permute(0, 2, 1)
-        encoded_seq, _ = self.lstm(encoded_seq)
+
+        # Pack the padded input sequence before input to lstm
+        packed = pack_padded_sequence(
+            encoded_seq, text_lengths.cpu(), batch_first=True, enforce_sorted=False
+        )
+
+        self.lstm.flatten_parameters()
+        packed_out, _ = self.lstm(packed)
+
+        encoded_seq, _ = pad_packed_sequence(
+            packed_out, batch_first=True, total_length=text.shape[1]
+        )
 
         seq_masks = self.make_seq_mask(text, text_lengths)
+
         return encoded_seq, seq_masks
