@@ -52,7 +52,7 @@ def build_overfit_batch(n=2):
     return collate_fn(batch)
 
 
-def train(model, batch, device, steps=2000, lr=1e-3, log_every=500):
+def train(model, batch, device, steps=1500, lr=1e-3, log_every=50):
     texts, mels, _, mel_lengths = batch
     texts = texts.to(device)
     mels = mels.to(device)

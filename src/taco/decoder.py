@@ -32,7 +32,7 @@ class Attention(nn.Module):
         loc_feats = self.w_l(loc_feats.transpose(1, 2))  # (B, 1, U)
 
         score = self.w_v(torch.tanh(q + k + loc_feats))  # (B, Tt, 1)
-        weights = torch.softmax(score, dim=-1)
+        weights = torch.softmax(score, dim=1)
 
         c = torch.einsum("bsd,bsq->bd", k, weights)
 
