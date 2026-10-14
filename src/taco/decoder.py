@@ -6,6 +6,8 @@ from taco.hparams import DataConfig, ModelConfig
 
 
 # TODO Add masking
+# Encoder gives us the true length of the sequence.
+#
 class Attention(nn.Module):
     def __init__(self, query_dim, key_dim, attn_dim=128):
         super().__init__()
@@ -19,7 +21,7 @@ class Attention(nn.Module):
         self.w_v = nn.Linear(attn_dim, 1, bias=False)
         self.loc_conv = nn.Conv1d(2, location_feat_d, kernel_size=filter_sz, padding="same")
 
-    def forward(self, query, keys, weights_prev, weights_cum):
+    def forward(self, query, keys, weights_prev, weights_cum, mask=None):
         # q: (B, q_dim)
         # k: (B, S, k_dim)
         # p_w: (B, S, 1)
@@ -34,6 +36,10 @@ class Attention(nn.Module):
         loc_feats = self.w_l(loc_feats.transpose(1, 2))  # (B, S, U)
 
         score = self.w_v(torch.tanh(q + k + loc_feats))  # (B, S, 1)
+
+        if mask is not None:
+            score = score.masked_fill(mask, -torch.inf)
+
         weights = torch.softmax(score, dim=1)
 
         c = torch.einsum("bsd,bsq->bd", keys, weights)

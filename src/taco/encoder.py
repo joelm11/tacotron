@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 from taco.hparams import ModelConfig
@@ -27,10 +28,11 @@ class Encoder(nn.Module):
         )
         self.lstm = nn.LSTM(units, units // 2, bidirectional=True, batch_first=True)
 
-    def forward(self, x):
-        embeddings = self.embeddings(x)
+    def forward(self, text, text_lengths):
+        embeddings = self.embeddings(text)
         embeddings = embeddings.permute(0, 2, 1)
-        outputs = self.convs(embeddings)
-        outputs = outputs.permute(0, 2, 1)
-        outputs, _ = self.lstm(outputs)
-        return outputs
+        encoded_seq = self.convs(embeddings)
+        encoded_seq = encoded_seq.permute(0, 2, 1)
+        encoded_seq, _ = self.lstm(encoded_seq)
+        seq_masks = torch.tensor((text.shape[0],))
+        return encoded_seq, seq_masks

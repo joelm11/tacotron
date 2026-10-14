@@ -18,8 +18,8 @@ class TTSModel(nn.Module):
         )
         self.post_net = PostNet()
 
-    def forward(self, x, target_mels=None):
-        enc_seq = self.encoder(x)
+    def forward(self, text, text_lengths, target_mels=None):
+        enc_seq = self.encoder(text, text_lengths)
         if target_mels is None:
             # Autoregressive inference is not implemented in the decoder yet.
             return enc_seq
@@ -53,8 +53,9 @@ def build_overfit_batch(n=2):
 
 
 def train(model, batch, device, steps=1500, lr=1e-3, log_every=50):
-    texts, mels, _, mel_lengths = batch
+    texts, mels, text_lengths, mel_lengths = batch
     texts = texts.to(device)
+    text_lengths = text_lengths.to(device)
     mels = mels.to(device)
     mel_lengths = mel_lengths.to(device)
 
@@ -69,7 +70,7 @@ def train(model, batch, device, steps=1500, lr=1e-3, log_every=50):
 
     model.train()
     for step in range(steps):
-        pred_mels, pred_mels_wres, pred_stops, attn_weights = model(texts, mels)
+        pred_mels, pred_mels_wres, pred_stops, attn_weights = model(texts, text_lengths, mels)
 
         loss_mel = mse(pred_mels, mels)
         loss_res_mel = mse(pred_mels_wres, mels)
