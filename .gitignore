@@ -1,9 +1,11 @@
 # Python
 .venv/
 __pycache__/
+.ruff_cache/
 
 # Data
 data/
+logs/
 
 # VSCode
 .vscode/

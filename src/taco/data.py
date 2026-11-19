@@ -37,7 +37,7 @@ def download_extract_dataset(output_dir: Path):
 
 
 def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def get_dataset_dir(project_root: Path) -> Path:
@@ -50,6 +50,10 @@ def get_metadata_path(project_root: Path) -> Path:
 
 def get_wav_path(project_root: Path, label: str) -> Path:
     return get_dataset_dir(project_root) / "wavs" / f"{label}.wav"
+
+
+def get_wav_root(project_root: Path) -> Path:
+    return get_dataset_dir(project_root) / "wavs"
 
 
 def get_feat_dir(project_root: Path) -> Path:

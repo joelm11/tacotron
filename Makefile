@@ -4,7 +4,7 @@
 UV := uv
 PYTHON := $(UV) run python
 
-SRC_DIR := src
+SRC_DIR := src/taco
 
 # Ensure Keras uses the TensorFlow backend (required for GPU support)
 export KERAS_BACKEND := tensorflow
@@ -25,14 +25,8 @@ install: ## Install dependencies and the project in the uv venv
 data: ## Download and prepare the dataset
 	$(PYTHON) $(SRC_DIR)/data.py
 
-preproc: ## Preprocess input text
-	$(PYTHON) $(SRC_DIR)/pre_proc_data.py
-
-train: ## Train the model (uses GPU if available, otherwise CPU)
-	$(PYTHON) $(SRC_DIR)/train.py
-
-serve: ## Serve the trained model
-	$(PYTHON) $(SRC_DIR)/serve.py
+model: ## Build the model
+	$(PYTHON) $(SRC_DIR)/model.py
 
 format: ## Format and lint code with ruff
 	$(UV) run ruff check --fix src/
